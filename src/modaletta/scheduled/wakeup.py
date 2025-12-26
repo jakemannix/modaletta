@@ -209,6 +209,7 @@ def main(
     agent_id: str | None = None,
     init: bool = False,
     logs: bool = False,
+    prompt: str | None = None,
 ):
     """CLI entrypoint for testing wakeups.
 
@@ -216,18 +217,27 @@ def main(
         # Test wakeup for a specific agent
         modal run src/modaletta/scheduled/wakeup.py --agent-id agent-xxx
 
+        # Test wakeup with custom prompt
+        modal run src/modaletta/scheduled/wakeup.py --agent-id agent-xxx --prompt "Check for new emails"
+
         # Initialize roster with an agent
         modal run src/modaletta/scheduled/wakeup.py --init --agent-id agent-xxx
+
+        # Initialize with custom wakeup prompt for scheduled runs
+        modal run src/modaletta/scheduled/wakeup.py --init --agent-id agent-xxx --prompt "Review daily tasks"
 
         # View logs for an agent
         modal run src/modaletta/scheduled/wakeup.py --logs --agent-id agent-xxx
     """
     if init and agent_id:
         # Quick init with a single agent
-        result = init_agent_roster.remote([{
+        agent_config = {
             "agent_id": agent_id,
             "autonomous_enabled": True,
-        }])
+        }
+        if prompt:
+            agent_config["wakeup_prompt"] = prompt
+        result = init_agent_roster.remote([agent_config])
         print(result)
     elif logs and agent_id:
         entries = get_wakeup_logs.remote(agent_id)
@@ -235,14 +245,14 @@ def main(
             print(f"\n--- {entry['timestamp']} ---")
             print(f"Messages: {entry['response_count']}")
             for msg in entry.get("messages", []):
-                msg_type = msg.get("message_type", "unknown")
+                msg_type = msg.get("type", "unknown")
                 if msg_type == "assistant_message":
                     print(f"  Assistant: {msg.get('content', '')[:200]}")
                 elif msg_type == "reasoning_message":
                     print(f"  Reasoning: {msg.get('reasoning', '')[:100]}")
     elif agent_id:
         # One-time wakeup
-        result = agent_wakeup_once.remote(agent_id)
+        result = agent_wakeup_once.remote(agent_id, prompt=prompt)
         print(f"\nWakeup sent to {agent_id}")
         print(f"Timestamp: {result['timestamp']}")
         print("\nResponse:")
@@ -255,5 +265,7 @@ def main(
     else:
         print("Usage:")
         print("  modal run src/modaletta/scheduled/wakeup.py --agent-id <id>")
+        print("  modal run src/modaletta/scheduled/wakeup.py --agent-id <id> --prompt 'Custom message'")
         print("  modal run src/modaletta/scheduled/wakeup.py --init --agent-id <id>")
+        print("  modal run src/modaletta/scheduled/wakeup.py --init --agent-id <id> --prompt 'Scheduled prompt'")
         print("  modal run src/modaletta/scheduled/wakeup.py --logs --agent-id <id>")

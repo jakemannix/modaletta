@@ -88,6 +88,16 @@ Test a one-time wakeup for a specific agent:
 modal run src/modaletta/scheduled/wakeup.py --agent-id <agent-id>
 ```
 
+Test with a custom prompt:
+```bash
+modal run src/modaletta/scheduled/wakeup.py --agent-id <agent-id> --prompt "Check for new emails and summarize"
+```
+
+Initialize roster with a custom scheduled prompt:
+```bash
+modal run src/modaletta/scheduled/wakeup.py --init --agent-id <agent-id> --prompt "Review daily tasks and priorities"
+```
+
 View wakeup logs for an agent:
 ```bash
 modal run src/modaletta/scheduled/wakeup.py --logs --agent-id <agent-id>
