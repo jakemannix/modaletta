@@ -45,17 +45,9 @@ class ModalettaAgent:
         """
         return self.client.send_message(self.agent_id, message, **kwargs)
     
-    def get_memory(self) -> Dict[str, Any]:
-        """Get agent memory state."""
-        return self.client.get_agent_memory(self.agent_id)
-    
-    def update_memory(self, memory_updates: Dict[str, Any]) -> None:
-        """Update agent memory.
-        
-        Args:
-            memory_updates: Memory updates to apply.
-        """
-        self.client.update_agent_memory(self.agent_id, memory_updates)
+    def get_blocks(self) -> List[Dict[str, Any]]:
+        """Get agent memory blocks."""
+        return self.client.get_agent_blocks(self.agent_id)
     
     def get_info(self) -> Dict[str, Any]:
         """Get agent information."""

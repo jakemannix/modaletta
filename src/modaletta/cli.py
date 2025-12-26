@@ -45,10 +45,13 @@ def list_agents(ctx: click.Context) -> None:
     table.add_column("Created", style="green")
     
     for agent in agents:
+        created_at = agent.get("created_at", "")
+        if hasattr(created_at, "isoformat"):
+            created_at = created_at.isoformat()
         table.add_row(
             agent.get("id", ""),
             agent.get("name", ""),
-            agent.get("created_at", "")
+            str(created_at)
         )
     
     console.print(table)
@@ -56,23 +59,23 @@ def list_agents(ctx: click.Context) -> None:
 
 @main.command()
 @click.option("--name", help="Agent name")
-@click.option("--persona", help="Agent persona")
-@click.option("--human", help="Human description")
+@click.option("--system", help="System prompt for the agent")
+@click.option("--model", help="LLM model to use")
 @click.pass_context
 def create_agent(
     ctx: click.Context,
     name: Optional[str],
-    persona: Optional[str],
-    human: Optional[str]
+    system: Optional[str],
+    model: Optional[str]
 ) -> None:
     """Create a new agent."""
     client: ModalettaClient = ctx.obj["client"]
-    
+
     try:
         agent_id = client.create_agent(
             name=name,
-            persona=persona,
-            human=human
+            system=system,
+            model=model
         )
         console.print(f"[green]Created agent: {agent_id}[/green]")
     except Exception as e:
@@ -100,16 +103,27 @@ def delete_agent(ctx: click.Context, agent_id: str) -> None:
 def send_message(ctx: click.Context, agent_id: str, message: str) -> None:
     """Send a message to an agent."""
     client: ModalettaClient = ctx.obj["client"]
-    
+
     try:
         response = client.send_message(agent_id, message)
         console.print(f"[blue]Sent:[/blue] {message}")
         console.print("[green]Response:[/green]")
-        
+
         for msg in response:
-            role = msg.get("role", "")
-            content = msg.get("text", "")
-            console.print(f"[yellow]{role}:[/yellow] {content}")
+            msg_type = msg.get("message_type", "unknown")
+            # Handle different message types
+            if msg_type == "assistant_message":
+                content = msg.get("content", "")
+                console.print(f"[yellow]Assistant:[/yellow] {content}")
+            elif msg_type == "reasoning_message":
+                reasoning = msg.get("reasoning", "")
+                console.print(f"[dim]Reasoning:[/dim] {reasoning}")
+            elif msg_type == "tool_call_message":
+                tool = msg.get("tool_call", {})
+                console.print(f"[cyan]Tool call:[/cyan] {tool}")
+            elif msg_type == "tool_return_message":
+                result = msg.get("tool_return", "")
+                console.print(f"[cyan]Tool result:[/cyan] {result}")
     except Exception as e:
         console.print(f"[red]Error sending message: {e}[/red]")
 
@@ -118,13 +132,14 @@ def send_message(ctx: click.Context, agent_id: str, message: str) -> None:
 @click.argument("agent_id")
 @click.pass_context
 def get_memory(ctx: click.Context, agent_id: str) -> None:
-    """Get agent memory state."""
+    """Get agent memory blocks."""
     client: ModalettaClient = ctx.obj["client"]
-    
+
     try:
-        memory = client.get_agent_memory(agent_id)
-        console.print(f"[green]Memory for agent {agent_id}:[/green]")
-        console.print(memory)
+        blocks = client.get_agent_blocks(agent_id)
+        console.print(f"[green]Memory blocks for agent {agent_id}:[/green]")
+        for block in blocks:
+            console.print(f"  [cyan]{block.get('label', 'unknown')}:[/cyan] {block.get('value', '')[:200]}")
     except Exception as e:
         console.print(f"[red]Error getting memory: {e}[/red]")
 
