@@ -1,5 +1,7 @@
 """Modaletta Web Chat API - FastAPI endpoints served via Modal."""
 
+import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +10,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+# Configure logging to show in Modal logs
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("modaletta.webapp")
 
 # Modal app configuration
 app = modal.App("modaletta-webapp")
@@ -145,19 +154,36 @@ async def list_agents(project_id: str | None = None) -> list[dict[str, Any]]:
     from modaletta.client import ModalettaClient
     from modaletta.config import ModalettaConfig
 
-    config = ModalettaConfig.from_env()
-    client = ModalettaClient(config, project_id=project_id)
-    agents = client.list_agents()
+    logger.info(f"list_agents called with project_id={project_id}")
+    start_time = time.time()
 
-    # Return simplified agent info
-    return [
-        {
-            "id": agent.get("id"),
-            "name": agent.get("name"),
-            "created_at": agent.get("created_at"),
-        }
-        for agent in agents
-    ]
+    try:
+        config = ModalettaConfig.from_env()
+        logger.info(f"Config loaded: server_url={config.letta_server_url}, api_key={'*' * 8 if config.letta_api_key else 'None'}")
+
+        client = ModalettaClient(config, project_id=project_id)
+        logger.info("ModalettaClient created, calling list_agents...")
+
+        agents = client.list_agents()
+        elapsed = time.time() - start_time
+        logger.info(f"list_agents returned {len(agents)} agents in {elapsed:.2f}s")
+
+        # Return simplified agent info
+        result = [
+            {
+                "id": agent.get("id"),
+                "name": agent.get("name"),
+                "created_at": agent.get("created_at"),
+            }
+            for agent in agents
+        ]
+        logger.info(f"Returning agents: {[a['name'] for a in result]}")
+        return result
+
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"list_agents failed after {elapsed:.2f}s: {type(e).__name__}: {e}")
+        raise
 
 
 @web_app.post("/api/chat")
@@ -166,14 +192,32 @@ async def send_message(request: SendMessageRequest) -> ChatResponse:
     from modaletta.client import ModalettaClient
     from modaletta.config import ModalettaConfig
 
-    config = ModalettaConfig.from_env()
-    client = ModalettaClient(config, project_id=request.project_id)
-    messages = client.send_message(
-        agent_id=request.agent_id,
-        message=request.message,
-        role=request.role,
-    )
-    return ChatResponse(messages=messages)
+    logger.info(f"send_message called: agent_id={request.agent_id}, project_id={request.project_id}, message_len={len(request.message)}")
+    start_time = time.time()
+
+    try:
+        config = ModalettaConfig.from_env()
+        client = ModalettaClient(config, project_id=request.project_id)
+        logger.info(f"Sending message to agent {request.agent_id}...")
+
+        messages = client.send_message(
+            agent_id=request.agent_id,
+            message=request.message,
+            role=request.role,
+        )
+        elapsed = time.time() - start_time
+        logger.info(f"send_message returned {len(messages)} messages in {elapsed:.2f}s")
+
+        # Log message types for debugging
+        msg_types = [m.get("message_type", "unknown") for m in messages]
+        logger.info(f"Message types: {msg_types}")
+
+        return ChatResponse(messages=messages)
+
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"send_message failed after {elapsed:.2f}s: {type(e).__name__}: {e}")
+        raise
 
 
 @web_app.get("/api/agents/{agent_id}/memory")
@@ -182,9 +226,23 @@ async def get_agent_memory(agent_id: str, project_id: str | None = None) -> dict
     from modaletta.client import ModalettaClient
     from modaletta.config import ModalettaConfig
 
-    config = ModalettaConfig.from_env()
-    client = ModalettaClient(config, project_id=project_id)
-    return client.get_agent_memory(agent_id)
+    logger.info(f"get_agent_memory called: agent_id={agent_id}, project_id={project_id}")
+    start_time = time.time()
+
+    try:
+        config = ModalettaConfig.from_env()
+        client = ModalettaClient(config, project_id=project_id)
+
+        memory = client.get_agent_memory(agent_id)
+        elapsed = time.time() - start_time
+        num_blocks = len(memory.get("memory_blocks", []))
+        logger.info(f"get_agent_memory returned {num_blocks} blocks in {elapsed:.2f}s")
+        return memory
+
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"get_agent_memory failed after {elapsed:.2f}s: {type(e).__name__}: {e}")
+        raise
 
 
 # Modal function that serves the ASGI app
