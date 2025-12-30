@@ -46,9 +46,8 @@ def main() -> None:
     # Get agent memory
     memory = agent.get_memory()
     print(f"\nAgent memory blocks:")
-    for block_id, block_data in memory.items():
-        if isinstance(block_data, dict):
-            print(f"  {block_id}: {block_data.get('value', '')[:100]}...")
+    for label, value in memory.items():
+        print(f"  {label}: {value[:100] if value else '(empty)'}...")
 
 
 if __name__ == "__main__":

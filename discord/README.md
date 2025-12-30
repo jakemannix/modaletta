@@ -25,13 +25,13 @@ A Discord bot integration for [Modaletta](https://github.com/jakemannix/modalett
 
 2. **Install the main Modaletta package**:
    ```bash
-   pip install -e .
+   uv sync
    ```
 
 3. **Install Discord bot dependencies**:
    ```bash
    cd discord
-   pip install -r requirements.txt
+   uv venv && uv pip install -r requirements.txt
    ```
 
 ## Configuration
