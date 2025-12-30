@@ -31,12 +31,7 @@ image = modal.Image.debian_slim().pip_install(
 def deliver_digest():
     """Fetch digest and send to Nameless via Letta API."""
     import requests
-    import yaml
     import os
-    from pathlib import Path
-    
-    # Import digest functions (will need to be available in the Modal environment)
-    # For now, inline the core logic
     
     BLUESKY_PUBLIC_API = "https://public.api.bsky.app/xrpc"
     
@@ -111,7 +106,7 @@ def deliver_digest():
     # Send to Letta
     letta_api_key = os.environ.get("LETTA_API_KEY")
     letta_base_url = os.environ.get("LETTA_BASE_URL", "https://api.letta.com")
-    agent_id = os.environ.get("NAMELESS_AGENT_ID")  # Need to set this
+    agent_id = os.environ.get("NAMELESS_AGENT_ID")
     
     if not all([letta_api_key, agent_id]):
         print("Missing LETTA_API_KEY or NAMELESS_AGENT_ID")
@@ -119,7 +114,6 @@ def deliver_digest():
         print(digest)
         return {"status": "dry_run", "digest_length": len(digest)}
     
-    # Send message to agent
     from letta_client import Letta
     
     client = Letta(
@@ -146,7 +140,6 @@ def test():
     print(f"Result: {result}")
 
 
-# Manual trigger function (for testing without waiting for cron)
 @app.function(image=image, secrets=[modal.Secret.from_name("letta-credentials")])
 def trigger_digest():
     """Manually trigger digest delivery."""
