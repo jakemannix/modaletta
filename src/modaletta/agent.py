@@ -1,7 +1,7 @@
 """Modaletta agent implementation using Modal for deployment."""
 
 import modal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 from .client import ModalettaClient
 from .config import ModalettaConfig
 
@@ -13,7 +13,10 @@ class ModalettaAgent:
         self,
         agent_id: Optional[str] = None,
         config: Optional[ModalettaConfig] = None,
-        client: Optional[ModalettaClient] = None
+        client: Optional[ModalettaClient] = None,
+        persona: Optional[str] = None,
+        human: Optional[str] = None,
+        name: Optional[str] = None,
     ) -> None:
         """Initialize Modaletta agent.
         
@@ -21,16 +24,25 @@ class ModalettaAgent:
             agent_id: Existing agent ID. If None, creates a new agent.
             config: Configuration object.
             client: Modaletta client instance.
+            persona: Agent persona for new agent creation.
+            human: Human description for new agent creation.
+            name: Agent name for new agent creation.
         """
         self.config = config or ModalettaConfig.from_env()
         self.client = client or ModalettaClient(self.config)
         self._agent_id = agent_id
+        self._creation_params = {
+            "persona": persona,
+            "human": human,
+            "name": name,
+        }
     
     @property
     def agent_id(self) -> str:
         """Get or create agent ID."""
         if self._agent_id is None:
-            self._agent_id = self.client.create_agent()
+            # Create agent with stored creation params
+            self._agent_id = self.client.create_agent(**self._creation_params)
         return self._agent_id
     
     def send_message(self, message: str, **kwargs: Any) -> List[Dict[str, Any]]:
@@ -41,13 +53,44 @@ class ModalettaAgent:
             **kwargs: Additional arguments.
             
         Returns:
-            Agent response messages.
+            Agent response messages with message_type field.
         """
         return self.client.send_message(self.agent_id, message, **kwargs)
     
-    def get_blocks(self) -> List[Dict[str, Any]]:
-        """Get agent memory blocks."""
-        return self.client.get_agent_blocks(self.agent_id)
+    def send_message_stream(
+        self,
+        message: str,
+        stream_tokens: bool = False,
+        **kwargs: Any
+    ) -> Iterator[Dict[str, Any]]:
+        """Send message to agent with streaming response.
+        
+        Args:
+            message: Message to send.
+            stream_tokens: If True, stream individual tokens. If False, stream complete chunks.
+            **kwargs: Additional arguments.
+            
+        Yields:
+            Message chunks with message_type field.
+        """
+        return self.client.send_message_stream(
+            self.agent_id,
+            message,
+            stream_tokens=stream_tokens,
+            **kwargs
+        )
+    
+    def get_memory(self) -> Dict[str, Any]:
+        """Get agent memory state."""
+        return self.client.get_agent_memory(self.agent_id)
+    
+    def update_memory(self, memory_updates: Dict[str, Any]) -> None:
+        """Update agent memory.
+        
+        Args:
+            memory_updates: Memory updates to apply.
+        """
+        self.client.update_agent_memory(self.agent_id, memory_updates)
     
     def get_info(self) -> Dict[str, Any]:
         """Get agent information."""

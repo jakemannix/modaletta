@@ -45,13 +45,10 @@ def list_agents(ctx: click.Context) -> None:
     table.add_column("Created", style="green")
     
     for agent in agents:
-        created_at = agent.get("created_at", "")
-        if hasattr(created_at, "isoformat"):
-            created_at = created_at.isoformat()
         table.add_row(
-            agent.get("id", ""),
-            agent.get("name", ""),
-            str(created_at)
+            str(agent.get("id", "")),
+            str(agent.get("name", "")),
+            str(agent.get("created_at", ""))
         )
     
     console.print(table)
@@ -59,14 +56,14 @@ def list_agents(ctx: click.Context) -> None:
 
 @main.command()
 @click.option("--name", help="Agent name")
-@click.option("--system", help="System prompt for the agent")
-@click.option("--model", help="LLM model to use")
+@click.option("--persona", help="Agent persona description")
+@click.option("--human", help="Human description for the agent")
 @click.pass_context
 def create_agent(
     ctx: click.Context,
     name: Optional[str],
-    system: Optional[str],
-    model: Optional[str]
+    persona: Optional[str],
+    human: Optional[str]
 ) -> None:
     """Create a new agent."""
     client: ModalettaClient = ctx.obj["client"]
@@ -74,10 +71,10 @@ def create_agent(
     try:
         agent_id = client.create_agent(
             name=name,
-            system=system,
-            model=model
+            persona=persona,
+            human=human
         )
-        console.print(f"[green]Created agent: {agent_id}[/green]")
+        console.print(f"Created agent: {agent_id}")
     except Exception as e:
         console.print(f"[red]Error creating agent: {e}[/red]")
 
@@ -91,7 +88,7 @@ def delete_agent(ctx: click.Context, agent_id: str) -> None:
     
     try:
         client.delete_agent(agent_id)
-        console.print(f"[green]Deleted agent: {agent_id}[/green]")
+        console.print(f"Deleted agent: {agent_id}")
     except Exception as e:
         console.print(f"[red]Error deleting agent: {e}[/red]")
 
@@ -99,31 +96,56 @@ def delete_agent(ctx: click.Context, agent_id: str) -> None:
 @main.command()
 @click.argument("agent_id")
 @click.argument("message")
+@click.option("--stream", is_flag=True, help="Stream the response")
 @click.pass_context
-def send_message(ctx: click.Context, agent_id: str, message: str) -> None:
+def send_message(ctx: click.Context, agent_id: str, message: str, stream: bool) -> None:
     """Send a message to an agent."""
     client: ModalettaClient = ctx.obj["client"]
 
     try:
-        response = client.send_message(agent_id, message)
         console.print(f"[blue]Sent:[/blue] {message}")
         console.print("[green]Response:[/green]")
-
-        for msg in response:
-            msg_type = msg.get("message_type", "unknown")
-            # Handle different message types
-            if msg_type == "assistant_message":
-                content = msg.get("content", "")
-                console.print(f"[yellow]Assistant:[/yellow] {content}")
-            elif msg_type == "reasoning_message":
-                reasoning = msg.get("reasoning", "")
-                console.print(f"[dim]Reasoning:[/dim] {reasoning}")
-            elif msg_type == "tool_call_message":
-                tool = msg.get("tool_call", {})
-                console.print(f"[cyan]Tool call:[/cyan] {tool}")
-            elif msg_type == "tool_return_message":
-                result = msg.get("tool_return", "")
-                console.print(f"[cyan]Tool result:[/cyan] {result}")
+        
+        if stream:
+            # Streaming mode
+            for chunk in client.send_message_stream(agent_id, message, stream_tokens=True):
+                message_type = chunk.get("message_type", "")
+                if message_type == "assistant_message":
+                    content = chunk.get("content", "")
+                    if content:
+                        console.print(content, end="")
+                elif message_type == "reasoning_message":
+                    reasoning = chunk.get("reasoning", "")
+                    if reasoning:
+                        console.print(f"[dim]{reasoning}[/dim]", end="")
+                elif message_type == "tool_call_message":
+                    tool_call = chunk.get("tool_call", {})
+                    if tool_call.get("name"):
+                        console.print(f"\n[yellow]Calling tool: {tool_call['name']}[/yellow]")
+                elif message_type == "tool_return_message":
+                    tool_return = chunk.get("tool_return", "")
+                    if tool_return:
+                        console.print(f"[dim]Tool returned: {tool_return}[/dim]")
+            console.print()  # New line at end
+        else:
+            # Non-streaming mode
+            response = client.send_message(agent_id, message)
+            
+            for msg in response:
+                message_type = msg.get("message_type", "")
+                if message_type == "assistant_message":
+                    content = msg.get("content", "")
+                    console.print(f"[cyan]Assistant:[/cyan] {content}")
+                elif message_type == "reasoning_message":
+                    reasoning = msg.get("reasoning", "")
+                    console.print(f"[dim]Reasoning:[/dim] {reasoning}")
+                elif message_type == "tool_call_message":
+                    tool_call = msg.get("tool_call", {})
+                    console.print(f"[yellow]Tool Call:[/yellow] {tool_call.get('name', '')}")
+                    console.print(f"[dim]Arguments:[/dim] {tool_call.get('arguments', '')}")
+                elif message_type == "tool_return_message":
+                    tool_return = msg.get("tool_return", "")
+                    console.print(f"[dim]Tool Return:[/dim] {tool_return}")
     except Exception as e:
         console.print(f"[red]Error sending message: {e}[/red]")
 
@@ -132,14 +154,13 @@ def send_message(ctx: click.Context, agent_id: str, message: str) -> None:
 @click.argument("agent_id")
 @click.pass_context
 def get_memory(ctx: click.Context, agent_id: str) -> None:
-    """Get agent memory blocks."""
+    """Get agent memory state."""
     client: ModalettaClient = ctx.obj["client"]
 
     try:
-        blocks = client.get_agent_blocks(agent_id)
-        console.print(f"[green]Memory blocks for agent {agent_id}:[/green]")
-        for block in blocks:
-            console.print(f"  [cyan]{block.get('label', 'unknown')}:[/cyan] {block.get('value', '')[:200]}")
+        memory = client.get_agent_memory(agent_id)
+        console.print(f"Memory for agent {agent_id}:")
+        console.print(memory)
     except Exception as e:
         console.print(f"[red]Error getting memory: {e}[/red]")
 

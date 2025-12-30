@@ -15,8 +15,10 @@ def test_default_config() -> None:
     assert config.modal_token_secret is None
     assert config.agent_name == "modaletta-agent"
     assert config.memory_capacity == 2000
-    assert config.llm_model == "gpt-4"
+    assert config.llm_model == "openai/gpt-4.1"
+    assert config.embedding_model == "openai/text-embedding-3-small"
     assert config.temperature == 0.7
+    assert config.tools == []
 
 
 def test_config_from_env() -> None:
@@ -28,8 +30,10 @@ def test_config_from_env() -> None:
         "MODAL_TOKEN_SECRET": "test-secret",
         "MODALETTA_AGENT_NAME": "test-agent",
         "MODALETTA_MEMORY_CAPACITY": "4000",
-        "MODALETTA_LLM_MODEL": "gpt-3.5-turbo",
-        "MODALETTA_TEMPERATURE": "0.5"
+        "MODALETTA_LLM_MODEL": "openai/gpt-3.5-turbo",
+        "MODALETTA_EMBEDDING_MODEL": "openai/text-embedding-ada-002",
+        "MODALETTA_TEMPERATURE": "0.5",
+        "MODALETTA_TOOLS": "web_search,run_code"
     }
     
     with patch.dict(os.environ, env_vars):
@@ -41,8 +45,10 @@ def test_config_from_env() -> None:
         assert config.modal_token_secret == "test-secret"
         assert config.agent_name == "test-agent"
         assert config.memory_capacity == 4000
-        assert config.llm_model == "gpt-3.5-turbo"
+        assert config.llm_model == "openai/gpt-3.5-turbo"
+        assert config.embedding_model == "openai/text-embedding-ada-002"
         assert config.temperature == 0.5
+        assert config.tools == ["web_search", "run_code"]
 
 
 def test_config_to_dict() -> None:
@@ -50,7 +56,8 @@ def test_config_to_dict() -> None:
     config = ModalettaConfig(
         letta_server_url="http://test:8000",
         letta_api_key="test-key",
-        agent_name="test-agent"
+        agent_name="test-agent",
+        tools=["web_search"]
     )
     
     config_dict = config.to_dict()
@@ -59,3 +66,22 @@ def test_config_to_dict() -> None:
     assert config_dict["letta_server_url"] == "http://test:8000"
     assert config_dict["letta_api_key"] == "test-key"
     assert config_dict["agent_name"] == "test-agent"
+    assert config_dict["tools"] == ["web_search"]
+
+
+def test_tools_parsing() -> None:
+    """Test tools parsing from environment."""
+    # Test empty string
+    with patch.dict(os.environ, {"MODALETTA_TOOLS": ""}):
+        config = ModalettaConfig.from_env()
+        assert config.tools == []
+    
+    # Test single tool
+    with patch.dict(os.environ, {"MODALETTA_TOOLS": "web_search"}):
+        config = ModalettaConfig.from_env()
+        assert config.tools == ["web_search"]
+    
+    # Test multiple tools with spaces
+    with patch.dict(os.environ, {"MODALETTA_TOOLS": "web_search, run_code, custom_tool"}):
+        config = ModalettaConfig.from_env()
+        assert config.tools == ["web_search", "run_code", "custom_tool"]
