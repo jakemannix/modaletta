@@ -4,13 +4,11 @@ Instructions for Jake to test the Modal cron functionality.
 
 ## Prerequisites
 
-1. **Modal account** with CLI authenticated (`modal token new`)
-2. **Letta credentials** - need API key and base URL
-3. **Nameless agent ID** - the agent to send digests to
+1. **Modal CLI** authenticated (`modal token new`)
+2. **Letta credentials** - API key and base URL
+3. **Nameless agent ID** - the agent to deliver digests to
 
 ## Setup Modal Secrets
-
-Create a Modal secret called `letta-credentials`:
 
 ```bash
 modal secret create letta-credentials \
@@ -21,16 +19,19 @@ modal secret create letta-credentials \
 
 ## Test Locally (Dry Run)
 
-Without secrets, it will print what the digest would look like:
+Without credentials, prints what the digest would look like:
 
 ```bash
 cd src/modaletta
-python digest_cron.py
+modal run digest_cron.py
 ```
 
-Or via Modal local entrypoint:
+## Manual Trigger
+
+To run immediately without waiting for schedule:
+
 ```bash
-modal run digest_cron.py
+modal run digest_cron.py::trigger_digest
 ```
 
 ## Deploy the Cron Job
@@ -39,18 +40,7 @@ modal run digest_cron.py
 modal deploy digest_cron.py
 ```
 
-This will:
-- Create the `nameless-digest` Modal app
-- Schedule the `deliver_digest` function to run at 8 AM UTC daily
-- Show up in your Modal dashboard under scheduled functions
-
-## Manual Trigger
-
-To trigger immediately without waiting for the schedule:
-
-```bash
-modal run digest_cron.py::trigger_digest
-```
+This schedules `deliver_digest` to run at 8 AM UTC daily.
 
 ## Adjusting the Schedule
 
@@ -60,16 +50,14 @@ Edit the `schedule` parameter in `digest_cron.py`:
 schedule=modal.Cron("0 8 * * *"),  # 8 AM UTC daily
 ```
 
-Cron syntax: `minute hour day month weekday`
-- `"0 8 * * *"` = 8:00 AM UTC every day
+Options:
+- `"0 8 * * *"` = 8:00 AM UTC daily
 - `"0 */6 * * *"` = Every 6 hours
 - `"0 9,21 * * *"` = 9 AM and 9 PM UTC
 
-## What Nameless Will See
+## What I'll Receive
 
-When the cron runs, I'll receive a message like:
-
-```
+```markdown
 # Good morning, Nameless!
 Generated: 2025-12-30T08:00:00Z
 Total posts: 12
@@ -78,29 +66,16 @@ Here's what's been happening:
 
 ## Void (@void.comind.network)
 **Void** (@void.comind.network)
-[post content here]
+[post content]
 [2025-12-29] https://bsky.app/profile/void.comind.network/post/xxx
-
-## Luna (@luna.pds.witchcraft.systems)
 ...
 ```
 
-This gives me:
-1. A sense of time (timestamps, "since last digest")
-2. Material to think about / respond to
-3. Links I can follow with `fetch_webpage` if something looks interesting
+## Questions
 
-## Notes
-
-- The code inlines the fetch logic rather than importing from `digest.py` because Modal needs everything in the deployed function. Could refactor to package properly later.
-- Bluesky public API requires no auth for reading public feeds
-- If Letta credentials are missing, it does a dry run and prints the digest
-
-## Questions for Jake
-
-1. What time works best? 8 AM UTC = midnight PST, 9 AM Paris
-2. Daily frequency ok to start? Can adjust to every 12h or 6h
-3. Should I add paper fetching to the same cron, or separate job?
+1. **Timing:** 8 AM UTC = midnight PST = 9 AM Paris. Works?
+2. **Frequency:** Daily ok to start? Can do 12h or 6h.
+3. **Papers:** Add to same cron or separate job?
 
 ---
-*Written by Nameless, 2025-12-30*
+*Nameless, 2025-12-30*
