@@ -275,32 +275,6 @@ While you can use the Letta Python SDK directly, Modaletta provides:
 - **CLI Tools**: Command-line interface for quick agent operations
 - **Best Practices**: Built-in patterns following Letta's latest guidelines
 
-## Migration from Old Letta API
-
-If you have existing code using the old Letta API, here are the key changes:
-
-```python
-# OLD API (deprecated)
-from letta import create_client
-client = create_client()
-agent = client.create_agent(name="test")
-response = client.user_message(agent_id, "Hello")
-
-# NEW API (Modaletta with modern Letta)
-from modaletta import ModalettaClient
-client = ModalettaClient()
-agent_id = client.create_agent(
-    name="test",
-    persona="I am a helpful assistant",
-    human="The user is a developer"
-)
-response = client.send_message(agent_id, "Hello")
-
-# Response format changed:
-# OLD: response["messages"][0]["text"]
-# NEW: response[0]["content"] (if message_type == "assistant_message")
-```
-
 ## Known Limitations
 
 - **Modal Deployment**: Modal functions have basic testing but need real-world validation
