@@ -33,8 +33,8 @@ def mock_letta_client() -> Mock:
     mock_client.agents.memory = Mock()
     mock_client.agents.memory.get = Mock()
     mock_client.agents.memory.update = Mock()
-    mock_client.agents.core_memory = Mock()
-    mock_client.agents.core_memory.retrieve = Mock()
+    mock_client.agents.blocks = Mock()
+    mock_client.agents.blocks.list = Mock()
     return mock_client
 
 
@@ -60,7 +60,7 @@ def test_letta_client_property(
     assert letta_client == mock_letta_client
     mock_letta_class.assert_called_once_with(
         base_url="http://test:8000",
-        token="test-key"
+        api_key="test-key"
     )
 
 
@@ -149,17 +149,20 @@ def test_get_agent_memory(
     mock_letta_client: Mock
 ) -> None:
     """Test getting agent memory."""
-    mock_memory = Mock()
-    mock_memory.model_dump.return_value = {
-        "human": {"value": "Test user"},
-        "persona": {"value": "Test assistant"}
-    }
-    mock_letta_client.agents.core_memory.retrieve.return_value = mock_memory
+    mock_human_block = Mock()
+    mock_human_block.label = "human"
+    mock_human_block.value = "Test user"
+    mock_persona_block = Mock()
+    mock_persona_block.label = "persona"
+    mock_persona_block.value = "Test assistant"
+    mock_letta_client.agents.blocks.list.return_value = [mock_human_block, mock_persona_block]
     mock_letta_class.return_value = mock_letta_client
     
     client = ModalettaClient(mock_config)
     memory = client.get_agent_memory("test-agent-id")
     
     assert "human" in memory
+    assert memory["human"] == "Test user"
     assert "persona" in memory
-    mock_letta_client.agents.core_memory.retrieve.assert_called_once_with("test-agent-id")
+    assert memory["persona"] == "Test assistant"
+    mock_letta_client.agents.blocks.list.assert_called_once_with("test-agent-id")

@@ -23,7 +23,7 @@ class ModalettaClient:
         if self._letta_client is None:
             self._letta_client = Letta(
                 base_url=self.config.letta_server_url,
-                token=self.config.letta_api_key
+                api_key=self.config.letta_api_key
             )
         return self._letta_client
     
@@ -169,10 +169,10 @@ class ModalettaClient:
             agent_id: Agent ID.
             
         Returns:
-            Agent memory information.
+            Agent memory blocks as a dict of {label: value}.
         """
-        memory = self.letta_client.agents.core_memory.retrieve(agent_id)
-        return memory.model_dump()
+        blocks = self.letta_client.agents.blocks.list(agent_id)
+        return {block.label: block.value for block in blocks}
     
     def update_agent_memory(
         self,
