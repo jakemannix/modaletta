@@ -46,9 +46,9 @@ def list_agents(ctx: click.Context) -> None:
     
     for agent in agents:
         table.add_row(
-            agent.get("id", ""),
-            agent.get("name", ""),
-            agent.get("created_at", "")
+            str(agent.get("id", "")),
+            str(agent.get("name", "")),
+            str(agent.get("created_at", ""))
         )
     
     console.print(table)
@@ -96,20 +96,56 @@ def delete_agent(ctx: click.Context, agent_id: str) -> None:
 @main.command()
 @click.argument("agent_id")
 @click.argument("message")
+@click.option("--stream", is_flag=True, help="Stream the response")
 @click.pass_context
-def send_message(ctx: click.Context, agent_id: str, message: str) -> None:
+def send_message(ctx: click.Context, agent_id: str, message: str, stream: bool) -> None:
     """Send a message to an agent."""
     client: ModalettaClient = ctx.obj["client"]
     
     try:
-        response = client.send_message(agent_id, message)
         console.print(f"[blue]Sent:[/blue] {message}")
         console.print("[green]Response:[/green]")
         
-        for msg in response:
-            role = msg.get("role", "")
-            content = msg.get("text", "")
-            console.print(f"[yellow]{role}:[/yellow] {content}")
+        if stream:
+            # Streaming mode
+            for chunk in client.send_message_stream(agent_id, message, stream_tokens=True):
+                message_type = chunk.get("message_type", "")
+                if message_type == "assistant_message":
+                    content = chunk.get("content", "")
+                    if content:
+                        console.print(content, end="")
+                elif message_type == "reasoning_message":
+                    reasoning = chunk.get("reasoning", "")
+                    if reasoning:
+                        console.print(f"[dim]{reasoning}[/dim]", end="")
+                elif message_type == "tool_call_message":
+                    tool_call = chunk.get("tool_call", {})
+                    if tool_call.get("name"):
+                        console.print(f"\n[yellow]Calling tool: {tool_call['name']}[/yellow]")
+                elif message_type == "tool_return_message":
+                    tool_return = chunk.get("tool_return", "")
+                    if tool_return:
+                        console.print(f"[dim]Tool returned: {tool_return}[/dim]")
+            console.print()  # New line at end
+        else:
+            # Non-streaming mode
+            response = client.send_message(agent_id, message)
+            
+            for msg in response:
+                message_type = msg.get("message_type", "")
+                if message_type == "assistant_message":
+                    content = msg.get("content", "")
+                    console.print(f"[cyan]Assistant:[/cyan] {content}")
+                elif message_type == "reasoning_message":
+                    reasoning = msg.get("reasoning", "")
+                    console.print(f"[dim]Reasoning:[/dim] {reasoning}")
+                elif message_type == "tool_call_message":
+                    tool_call = msg.get("tool_call", {})
+                    console.print(f"[yellow]Tool Call:[/yellow] {tool_call.get('name', '')}")
+                    console.print(f"[dim]Arguments:[/dim] {tool_call.get('arguments', '')}")
+                elif message_type == "tool_return_message":
+                    tool_return = msg.get("tool_return", "")
+                    console.print(f"[dim]Tool Return:[/dim] {tool_return}")
     except Exception as e:
         console.print(f"[red]Error sending message: {e}[/red]")
 
