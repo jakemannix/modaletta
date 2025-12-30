@@ -33,6 +33,8 @@ def mock_letta_client() -> Mock:
     mock_client.agents.memory = Mock()
     mock_client.agents.memory.get = Mock()
     mock_client.agents.memory.update = Mock()
+    mock_client.agents.core_memory = Mock()
+    mock_client.agents.core_memory.retrieve = Mock()
     return mock_client
 
 
@@ -152,7 +154,7 @@ def test_get_agent_memory(
         "human": {"value": "Test user"},
         "persona": {"value": "Test assistant"}
     }
-    mock_letta_client.agents.memory.get.return_value = mock_memory
+    mock_letta_client.agents.core_memory.retrieve.return_value = mock_memory
     mock_letta_class.return_value = mock_letta_client
     
     client = ModalettaClient(mock_config)
@@ -160,4 +162,4 @@ def test_get_agent_memory(
     
     assert "human" in memory
     assert "persona" in memory
-    mock_letta_client.agents.memory.get.assert_called_once_with("test-agent-id")
+    mock_letta_client.agents.core_memory.retrieve.assert_called_once_with("test-agent-id")
