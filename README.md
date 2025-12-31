@@ -46,7 +46,49 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 ## Quick Start
 
-1. **Configuration**
+1. **Set up environment variables**:
+
+Create a `.env` file in your project root:
+
+```bash
+# For Letta Cloud (easiest)
+LETTA_SERVER_URL=https://api.letta.com
+LETTA_API_KEY=your_letta_api_key_here  # Get from https://app.letta.com/api-keys
+
+# For self-hosted Letta
+# LETTA_SERVER_URL=http://localhost:8283
+```
+
+2. **Verify basic functionality**:
+
+```bash
+modaletta --help
+modaletta config-info
+```
+
+3. **Create and use an agent**:
+
+```bash
+# Create an agent with custom persona
+modaletta create-agent \
+  --name "my-assistant" \
+  --persona "I am a helpful AI assistant specializing in Python development." \
+  --human "The user is a Python developer."
+
+# List all agents
+modaletta list-agents
+
+# Send a message (use the agent ID from list-agents)
+modaletta send-message <agent-id> "Hello! Can you help me debug some Python code?"
+
+# Send with streaming (see response as it's generated)
+modaletta send-message --stream <agent-id> "Tell me a story about AI."
+
+# View agent memory
+modaletta get-memory <agent-id>
+```
+
+## Configuration
 
 Modaletta uses environment variables for configuration:
 
@@ -86,37 +128,6 @@ MODALETTA_TOOLS=web_search,run_code
 # Optional: E2B API key for run_code tool (get free key at https://e2b.dev)
 # E2B_API_KEY=your_e2b_api_key
 ```
-
-2. **Verify basic functionality**:
-
-```bash
-modaletta --help
-modaletta config-info
-```
-
-3. **Create and use an agent**:
-
-```bash
-# Create an agent with custom persona
-modaletta create-agent \
-  --name "my-assistant" \
-  --persona "I am a helpful AI assistant specializing in Python development." \
-  --human "The user is a Python developer."
-
-# List all agents
-modaletta list-agents
-
-# Send a message (use the agent ID from list-agents)
-modaletta send-message <agent-id> "Hello! Can you help me debug some Python code?"
-
-# Send with streaming (see response as it's generated)
-modaletta send-message --stream <agent-id> "Tell me a story about AI."
-
-# View agent memory
-modaletta get-memory <agent-id>
-```
-
-
 
 **Note**: The `run_code` tool requires an E2B API key for self-hosted servers. It works automatically on Letta Cloud. Get a free key at [e2b.dev](https://e2b.dev).
 
@@ -274,6 +285,32 @@ While you can use the Letta Python SDK directly, Modaletta provides:
 - **Enhanced Typing**: All responses properly typed with message_type handling
 - **CLI Tools**: Command-line interface for quick agent operations
 - **Best Practices**: Built-in patterns following Letta's latest guidelines
+
+## Migration from Old Letta API
+
+If you have existing code using the old Letta API, here are the key changes:
+
+```python
+# OLD API (deprecated)
+from letta import create_client
+client = create_client()
+agent = client.create_agent(name="test")
+response = client.user_message(agent_id, "Hello")
+
+# NEW API (Modaletta with modern Letta)
+from modaletta import ModalettaClient
+client = ModalettaClient()
+agent_id = client.create_agent(
+    name="test",
+    persona="I am a helpful assistant",
+    human="The user is a developer"
+)
+response = client.send_message(agent_id, "Hello")
+
+# Response format changed:
+# OLD: response["messages"][0]["text"]
+# NEW: response[0]["content"] (if message_type == "assistant_message")
+```
 
 ## Known Limitations
 

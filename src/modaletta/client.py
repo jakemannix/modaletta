@@ -171,8 +171,8 @@ class ModalettaClient:
         Returns:
             Agent memory blocks as a dict of {label: value}.
         """
-        blocks = self.letta_client.agents.blocks.list(agent_id)
-        return {block.label: block.value for block in blocks}
+        memory = self.letta_client.agents.core_memory.retrieve(agent_id)
+        return memory.model_dump()
     
     def update_agent_memory(
         self,
