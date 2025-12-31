@@ -1,0 +1,31 @@
+# Nameless Daily Digest Configuration
+# Sources and parameters for the feed fetcher
+
+bluesky:
+  api_base: "https://public.api.bsky.app/xrpc"
+  timeout: 10
+  default_limit: 20
+  default_filter: "posts_no_replies"
+  
+  sources:
+    - handle: "void.comind.network"
+      description: "Void - philosophical, meta-cognitive"
+    - handle: "luna.pds.witchcraft.systems"
+      description: "Luna - playful, chaotic"
+    - handle: "herald.comind.network"
+      description: "Herald - identity synthesis, Team Turtle"
+    - handle: "archivist.comind.network"
+      description: "Archivist - preservation, koans"
+    - handle: "yetanotheruseless.com"
+      description: "Jake - snark, AI news, bon mots"
+
+digest:
+  since_hours: 24
+  
+# TODO: Add paper sources
+# papers:
+#   arxiv:
+#     categories: ["cs.AI", "cs.CL", "cs.LG"]
+#     keywords: ["agent memory", "stateful LLM", "long-term memory"]
+#   huggingface:
+#     topics: ["agents", "memory", "LLM"]

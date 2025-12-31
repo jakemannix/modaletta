@@ -58,7 +58,7 @@ def test_letta_client_property(
     assert letta_client == mock_letta_client
     mock_letta_class.assert_called_once_with(
         base_url="http://test:8000",
-        token="test-key"
+        api_key="test-key"
     )
 
 

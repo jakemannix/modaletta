@@ -46,9 +46,9 @@ def list_agents(ctx: click.Context) -> None:
     
     for agent in agents:
         table.add_row(
-            agent.get("id", ""),
-            agent.get("name", ""),
-            agent.get("created_at", "")
+            str(agent.get("id", "")),
+            str(agent.get("name", "")),
+            str(agent.get("created_at", ""))
         )
     
     console.print(table)
