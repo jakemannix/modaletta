@@ -28,6 +28,8 @@ image = modal.Image.debian_slim(python_version="3.11").pip_install(
         "pydantic>=2.0.0",
         "python-dotenv",
         "fastapi",
+        "pyjwt>=2.0.0",  # For JWT token handling
+        "httpx>=0.24.0",  # For OAuth HTTP requests
     ]
 )
 
@@ -68,10 +70,39 @@ web_app.add_middleware(
 )
 
 
+# =============================================================================
+# Authentication Setup (Optional - only enabled if OAuth credentials are set)
+# =============================================================================
+
+def is_auth_enabled() -> bool:
+    """Check if OAuth authentication is configured."""
+    import os
+    return bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"))
+
+
+def setup_auth_routes(app: FastAPI) -> None:
+    """Set up authentication routes if OAuth is configured."""
+    if is_auth_enabled():
+        from .auth import create_auth_router
+        auth_router = create_auth_router()
+        app.include_router(auth_router)
+        logger.info("OAuth authentication enabled")
+    else:
+        logger.info("OAuth authentication disabled (GOOGLE_CLIENT_ID/SECRET not set)")
+
+
+# Set up auth routes
+setup_auth_routes(web_app)
+
+
+# =============================================================================
+# API Endpoints
+# =============================================================================
+
 @web_app.get("/api/health")
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
-    return {"status": "ok"}
+    return {"status": "ok", "auth_enabled": str(is_auth_enabled())}
 
 
 class LogEntry(BaseModel):
@@ -248,7 +279,10 @@ async def get_agent_memory(agent_id: str, project_id: str | None = None) -> dict
 # Modal function that serves the ASGI app
 @app.function(
     image=image,
-    secrets=[modal.Secret.from_name("letta-credentials")],
+    secrets=[
+        modal.Secret.from_name("letta-credentials"),
+        modal.Secret.from_name("oauth-credentials", required=False),  # Optional OAuth
+    ],
 )
 @modal.asgi_app()
 def webapp() -> FastAPI:

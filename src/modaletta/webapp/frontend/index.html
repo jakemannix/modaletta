@@ -11,7 +11,13 @@
 <body>
     <div class="container">
         <header>
-            <h1>Modaletta Chat</h1>
+            <div class="header-top">
+                <h1>Modaletta Chat</h1>
+                <div id="auth-section" class="auth-section">
+                    <!-- Populated by JavaScript based on auth status -->
+                    <span id="auth-loading">...</span>
+                </div>
+            </div>
             <div class="agent-selector">
                 <select id="agent-select" aria-label="Select agent">
                     <option value="">Loading agents...</option>

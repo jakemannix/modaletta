@@ -287,3 +287,92 @@ header h1 {
     padding: 40px 20px;
     font-size: 1.1em;
 }
+
+/* ==========================================================================
+   Authentication Styles
+   ========================================================================== */
+
+.header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.header-top h1 {
+    margin-bottom: 0;
+}
+
+.auth-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.user-name {
+    font-size: 0.9rem;
+    color: var(--text-light);
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.auth-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    text-decoration: none;
+    font-weight: 500;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.login-btn {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.login-btn:hover {
+    background-color: var(--primary-hover);
+}
+
+.logout-btn {
+    background-color: transparent;
+    color: var(--text-light);
+    border: 1px solid var(--border-color);
+}
+
+.logout-btn:hover {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+
+/* Mobile adjustments for auth */
+@media (max-width: 480px) {
+    .header-top {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .user-name {
+        display: none; /* Hide name on very small screens */
+    }
+
+    .auth-btn {
+        padding: 6px 12px;
+        font-size: 0.8rem;
+    }
+}

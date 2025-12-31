@@ -98,6 +98,107 @@
     let silenceTimeout = null;
     let maxRecordingTimeout = null;
     let textBeforeRecording = ''; // Text in input before we started recording
+    let authState = { authenticated: false, user: null, authEnabled: false };
+
+    // ==========================================================================
+    // Authentication
+    // ==========================================================================
+
+    /**
+     * Check authentication status from server
+     */
+    async function checkAuthStatus() {
+        try {
+            const response = await fetch(`${API_BASE}/auth/status`);
+            if (response.ok) {
+                authState = await response.json();
+                authState.authEnabled = true;
+                debugLog('AUTH', 'Auth status fetched', authState);
+            } else if (response.status === 404) {
+                // Auth endpoints not available - auth is disabled
+                authState = { authenticated: false, user: null, authEnabled: false };
+                debugLog('AUTH', 'Auth endpoints not available (disabled)');
+            } else {
+                debugLog('AUTH', 'Auth status check failed', { status: response.status });
+            }
+        } catch (error) {
+            debugLog('AUTH', 'Auth status check error', { error: error.message });
+            authState = { authenticated: false, user: null, authEnabled: false };
+        }
+        updateAuthUI();
+        return authState;
+    }
+
+    /**
+     * Update the auth section UI based on current auth state
+     */
+    function updateAuthUI() {
+        const authSection = document.getElementById('auth-section');
+        if (!authSection) return;
+
+        if (!authState.authEnabled) {
+            // Auth is disabled - hide the section
+            authSection.innerHTML = '';
+            authSection.style.display = 'none';
+            return;
+        }
+
+        authSection.style.display = 'flex';
+
+        if (authState.authenticated && authState.user) {
+            // Logged in - show user info and logout button
+            const userName = authState.user.name || authState.user.email;
+            const userPicture = authState.user.picture;
+            
+            authSection.innerHTML = `
+                <div class="user-info">
+                    ${userPicture ? `<img src="${userPicture}" alt="${userName}" class="user-avatar">` : ''}
+                    <span class="user-name">${escapeHtml(userName)}</span>
+                </div>
+                <a href="/auth/logout" class="auth-btn logout-btn">Logout</a>
+            `;
+        } else {
+            // Not logged in - show login button
+            authSection.innerHTML = `
+                <a href="/auth/login" class="auth-btn login-btn">Sign in with Google</a>
+            `;
+        }
+    }
+
+    /**
+     * Escape HTML to prevent XSS
+     */
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /**
+     * Check for auth errors in URL and display them
+     */
+    function checkAuthErrors() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const authError = urlParams.get('auth_error');
+        if (authError) {
+            debugLog('AUTH', 'Auth error from URL', { error: authError });
+            let errorMessage = 'Authentication failed. Please try again.';
+            switch (authError) {
+                case 'invalid_state':
+                    errorMessage = 'Authentication session expired. Please try again.';
+                    break;
+                case 'missing_params':
+                    errorMessage = 'Authentication failed: missing parameters.';
+                    break;
+                case 'callback_failed':
+                    errorMessage = 'Authentication callback failed. Please try again.';
+                    break;
+            }
+            addMessage(errorMessage, 'system');
+            // Clear the error from URL
+            window.history.replaceState({}, '', window.location.pathname);
+        }
+    }
     let currentSessionTranscript = ''; // Accumulated transcript for current recording session
 
     // Audio context for beep sounds
@@ -139,6 +240,12 @@
             vendor: navigator.vendor,
             language: navigator.language
         });
+
+        // Check for auth errors first
+        checkAuthErrors();
+
+        // Check authentication status
+        await checkAuthStatus();
 
         // Get initial config from URL params and server defaults
         const { agentId, projectId } = await getInitialConfig();
