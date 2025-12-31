@@ -136,6 +136,18 @@ header h1 {
     background: white;
     position: sticky;
     bottom: 0;
+    align-items: center;
+}
+
+.user-label {
+    font-weight: 600;
+    color: var(--primary-color);
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
+.user-label:empty {
+    display: none;
 }
 
 #message-input {

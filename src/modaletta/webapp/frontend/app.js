@@ -101,6 +101,45 @@
     let authState = { authenticated: false, user: null, authEnabled: false };
 
     // ==========================================================================
+    // User Metadata Collection
+    // ==========================================================================
+
+    /**
+     * Collect metadata about the current user and their environment
+     */
+    function collectUserMetadata() {
+        // Collect context metadata (user info is extracted server-side from JWT)
+        const metadata = {
+            // Time info
+            local_time: new Date().toLocaleTimeString(),
+            local_date: new Date().toLocaleDateString(),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            
+            // Device info
+            device_type: getDeviceType(),
+            platform: navigator.platform,
+            language: navigator.language,
+        };
+        
+        return metadata;
+    }
+
+    /**
+     * Detect device type based on user agent and screen size
+     */
+    function getDeviceType() {
+        const ua = navigator.userAgent.toLowerCase();
+        
+        if (/iphone|ipod|android.*mobile|windows phone|blackberry/i.test(ua)) {
+            return 'mobile';
+        } else if (/ipad|android(?!.*mobile)|tablet/i.test(ua)) {
+            return 'tablet';
+        } else {
+            return 'desktop';
+        }
+    }
+
+    // ==========================================================================
     // Authentication
     // ==========================================================================
 
@@ -109,7 +148,10 @@
      */
     async function checkAuthStatus() {
         try {
-            const response = await fetch(`${API_BASE}/auth/status`);
+            // Auth routes are at /auth/*, not /api/auth/*
+            const response = await fetch('/auth/status', {
+                credentials: 'include'  // Send cookies with request
+            });
             if (response.ok) {
                 authState = await response.json();
                 authState.authEnabled = true;
@@ -134,6 +176,19 @@
      */
     function updateAuthUI() {
         const authSection = document.getElementById('auth-section');
+        const userLabel = document.getElementById('user-label');
+        
+        // Update user label in input area (first name only)
+        if (userLabel) {
+            if (authState.authenticated && authState.user) {
+                const fullName = authState.user.name || authState.user.email || '';
+                const firstName = fullName.split(/\s+/)[0]; // First word
+                userLabel.textContent = firstName ? `${firstName}:` : '';
+            } else {
+                userLabel.textContent = '';
+            }
+        }
+        
         if (!authSection) return;
 
         if (!authState.authEnabled) {
@@ -412,6 +467,9 @@
         const loadingMsg = addMessage('Thinking...', 'loading');
 
         try {
+            // Collect user metadata to send with message
+            const metadata = collectUserMetadata();
+            
             const response = await fetch(`${API_BASE}/chat`, {
                 method: 'POST',
                 headers: {
@@ -421,7 +479,8 @@
                     agent_id: currentAgentId,
                     message: message,
                     role: 'user',
-                    project_id: currentProjectId
+                    project_id: currentProjectId,
+                    metadata: metadata
                 })
             });
 

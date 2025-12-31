@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import modal
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -30,6 +30,7 @@ image = modal.Image.debian_slim(python_version="3.11").pip_install(
         "fastapi",
         "pyjwt>=2.0.0",  # For JWT token handling
         "httpx>=0.24.0",  # For OAuth HTTP requests
+        "pyyaml>=6.0",  # For authorized users YAML config
     ]
 )
 
@@ -40,8 +41,28 @@ image = image.add_local_python_source("modaletta")
 frontend_path = Path(__file__).parent / "frontend"
 image = image.add_local_dir(frontend_path, remote_path="/assets")
 
+# Add authorized users config if it exists
+authorized_users_path = Path(__file__).parent / "authorized_users.yaml"
+_has_authorized_users_file = authorized_users_path.exists()
+if _has_authorized_users_file:
+    image = image.add_local_file(
+        authorized_users_path, 
+        remote_path="/app/authorized_users.yaml"
+    )
+
 
 # Request/Response models
+class UserMetadata(BaseModel):
+    """Context metadata from the client (device, time, etc). User info comes from JWT."""
+    
+    local_time: str | None = None
+    local_date: str | None = None
+    timezone: str | None = None
+    device_type: str | None = None
+    platform: str | None = None
+    language: str | None = None
+
+
 class SendMessageRequest(BaseModel):
     """Request body for sending a message to an agent."""
 
@@ -49,6 +70,7 @@ class SendMessageRequest(BaseModel):
     message: str
     role: str = "user"
     project_id: str | None = None
+    metadata: UserMetadata | None = None
 
 
 class ChatResponse(BaseModel):
@@ -81,18 +103,100 @@ def is_auth_enabled() -> bool:
 
 
 def setup_auth_routes(app: FastAPI) -> None:
-    """Set up authentication routes if OAuth is configured."""
+    """Set up authentication routes. Routes are always registered but may return errors if not configured."""
+    from modaletta.webapp.auth import create_auth_router
+    auth_router = create_auth_router()
+    app.include_router(auth_router)
     if is_auth_enabled():
-        from .auth import create_auth_router
-        auth_router = create_auth_router()
-        app.include_router(auth_router)
         logger.info("OAuth authentication enabled")
     else:
-        logger.info("OAuth authentication disabled (GOOGLE_CLIENT_ID/SECRET not set)")
+        logger.info("OAuth routes registered but credentials not configured")
 
 
-# Set up auth routes
-setup_auth_routes(web_app)
+def setup_auth_middleware(app: FastAPI) -> None:
+    """Set up middleware to protect routes when auth is enabled."""
+    if not is_auth_enabled():
+        return
+    
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import RedirectResponse, JSONResponse
+    from modaletta.webapp.auth import get_token_from_request, decode_jwt_token, OAuthConfig
+    from modaletta.webapp.authorization import get_authorization_provider, configure_authorization_from_env
+    
+    # Configure authorization on startup
+    configure_authorization_from_env()
+    
+    # Routes that don't require authentication
+    PUBLIC_PATHS = {
+        "/auth/login",
+        "/auth/callback", 
+        "/auth/logout",
+        "/auth/status",
+        "/api/health",
+    }
+    
+    class AuthMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            path = request.url.path
+            
+            # Allow public paths
+            if path in PUBLIC_PATHS or path.startswith("/auth/"):
+                return await call_next(request)
+            
+            # Allow login page
+            if path == "/login.html":
+                return await call_next(request)
+            
+            # Allow unauthorized page (so users can see it after failed auth)
+            if path == "/unauthorized.html":
+                return await call_next(request)
+            
+            # Check authentication
+            token = get_token_from_request(request)
+            if token:
+                try:
+                    config = OAuthConfig.from_env()
+                    token_data = decode_jwt_token(token, config)
+                    if token_data:
+                        # Valid token - now check authorization
+                        auth_provider = get_authorization_provider()
+                        if auth_provider.is_authorized(token_data.email):
+                            # Authorized - allow request
+                            return await call_next(request)
+                        else:
+                            # Authenticated but not authorized
+                            logger.warning(f"Unauthorized access attempt by {token_data.email}")
+                            if path.startswith("/api/"):
+                                return JSONResponse(
+                                    {"detail": f"User {token_data.email} is not authorized to access this application"},
+                                    status_code=403
+                                )
+                            else:
+                                # Redirect to unauthorized page
+                                return RedirectResponse(url=f"/unauthorized.html?email={token_data.email}")
+                except Exception as e:
+                    logger.error(f"Auth middleware error: {e}")
+            
+            # Not authenticated - redirect to login page for browser requests, 401 for API
+            if path.startswith("/api/"):
+                return JSONResponse(
+                    {"detail": "Authentication required"},
+                    status_code=401
+                )
+            else:
+                return RedirectResponse(url="/login.html")
+    
+    app.add_middleware(AuthMiddleware)
+    logger.info("Auth middleware enabled - routes are protected")
+
+
+# Set up auth routes and middleware
+# Always register auth routes (they handle missing credentials gracefully)
+# Middleware is only set up if credentials are present
+from modaletta.webapp.auth import create_auth_router
+_auth_router = create_auth_router()
+web_app.include_router(_auth_router)
+logger.info("Auth routes registered")
 
 
 # =============================================================================
@@ -217,11 +321,56 @@ async def list_agents(project_id: str | None = None) -> list[dict[str, Any]]:
         raise
 
 
+def format_message_with_user_and_context(
+    message: str,
+    user_email: str | None,
+    user_name: str | None,
+    metadata: UserMetadata | None
+) -> str:
+    """Format a message with user (from JWT) and context (from client) as JSON.
+    
+    User info comes from the server-side JWT token (secure).
+    Context info comes from the client (device, time, etc).
+    """
+    import json
+    
+    enriched: dict[str, Any] = {"message": message}
+    
+    # Add user info from JWT token (server-verified)
+    if user_email or user_name:
+        enriched["user"] = {}
+        if user_email:
+            enriched["user"]["email"] = user_email
+        if user_name:
+            enriched["user"]["name"] = user_name
+    
+    # Add context from client metadata
+    if metadata:
+        context = {}
+        if metadata.local_time:
+            context["local_time"] = metadata.local_time
+        if metadata.local_date:
+            context["local_date"] = metadata.local_date
+        if metadata.timezone:
+            context["timezone"] = metadata.timezone
+        if metadata.device_type:
+            context["device_type"] = metadata.device_type
+        if metadata.platform:
+            context["platform"] = metadata.platform
+        if metadata.language:
+            context["language"] = metadata.language
+        if context:
+            enriched["context"] = context
+    
+    return json.dumps(enriched)
+
+
 @web_app.post("/api/chat")
-async def send_message(request: SendMessageRequest) -> ChatResponse:
+async def send_message(request: SendMessageRequest, http_request: Request) -> ChatResponse:
     """Send a message to an agent and return the response."""
     from modaletta.client import ModalettaClient
     from modaletta.config import ModalettaConfig
+    from modaletta.webapp.auth import get_token_from_request, decode_jwt_token, OAuthConfig
 
     logger.info(f"send_message called: agent_id={request.agent_id}, project_id={request.project_id}, message_len={len(request.message)}")
     start_time = time.time()
@@ -229,11 +378,35 @@ async def send_message(request: SendMessageRequest) -> ChatResponse:
     try:
         config = ModalettaConfig.from_env()
         client = ModalettaClient(config, project_id=request.project_id)
-        logger.info(f"Sending message to agent {request.agent_id}...")
+        
+        # Extract user info from JWT token (server-side, secure)
+        user_email = None
+        user_name = None
+        token = get_token_from_request(http_request)
+        if token:
+            try:
+                oauth_config = OAuthConfig.from_env()
+                token_data = decode_jwt_token(token, oauth_config)
+                if token_data:
+                    user_email = token_data.email
+                    user_name = token_data.name
+                    logger.info(f"User from token: {user_email}")
+            except Exception as e:
+                logger.warning(f"Could not decode token: {e}")
+        
+        # Format message with user (from token) and context (from client)
+        formatted_message = format_message_with_user_and_context(
+            message=request.message,
+            user_email=user_email,
+            user_name=user_name,
+            metadata=request.metadata
+        )
+        logger.info(f"Formatted message: {formatted_message[:200]}...")
+        logger.info(f"Sending enriched message to agent {request.agent_id}...")
 
         messages = client.send_message(
             agent_id=request.agent_id,
-            message=request.message,
+            message=formatted_message,
             role=request.role,
         )
         elapsed = time.time() - start_time
@@ -276,17 +449,27 @@ async def get_agent_memory(agent_id: str, project_id: str | None = None) -> dict
         raise
 
 
+_middleware_initialized = False
+
 # Modal function that serves the ASGI app
 @app.function(
     image=image,
     secrets=[
         modal.Secret.from_name("letta-credentials"),
-        modal.Secret.from_name("oauth-credentials", required=False),  # Optional OAuth
+        modal.Secret.from_name("oauth-credentials"),
     ],
 )
 @modal.asgi_app()
 def webapp() -> FastAPI:
     """Serve the web application."""
+    global _middleware_initialized
+    
+    # Initialize auth middleware (only once, after Modal injects secrets)
+    if not _middleware_initialized:
+        setup_auth_middleware(web_app)
+        _middleware_initialized = True
+        logger.info("Auth middleware initialized")
+    
     # Mount static files at root (must be done after API routes)
     web_app.mount("/", StaticFiles(directory="/assets", html=True), name="static")
     return web_app

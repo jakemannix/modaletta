@@ -1,0 +1,23 @@
+# Authorized Users Configuration
+# 
+# This file controls which users can access the Modaletta webapp after
+# authenticating with Google OAuth.
+#
+# Copy this file to authorized_users.yaml and add your authorized users.
+#
+# Usage:
+#   Option 1: Set AUTHORIZED_USERS_FILE environment variable to point to this file
+#   Option 2: Set AUTHORIZED_USERS environment variable with comma-separated emails
+#
+# If neither is set, all authenticated users are allowed (no authorization check).
+
+authorized_users:
+  # Simple format: just list email addresses
+  - alice@example.com
+  - bob@example.com
+  
+  # Extended format (for future use with roles):
+  # - email: admin@example.com
+  #   role: admin
+  # - email: user@example.com
+  #   role: user

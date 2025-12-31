@@ -117,6 +117,58 @@ curl -b "modaletta_auth=YOUR-JWT-TOKEN" https://YOUR-APP-URL/auth/me
 | `JWT_SECRET` | No | Secret for signing JWTs (auto-generated if not set) |
 | `JWT_EXPIRATION_HOURS` | No | Token expiration in hours (default: 24) |
 | `OAUTH_REDIRECT_URI` | No | Override redirect URI (auto-detected if not set) |
+| `AUTHORIZED_USERS` | No | Comma-separated list of authorized email addresses |
+| `AUTHORIZED_USERS_FILE` | No | Path to YAML file containing authorized users |
+
+## Authorization (Restricting Access)
+
+By default, all authenticated Google users can access the app. To restrict access to specific users:
+
+### Option 1: Environment Variable (simplest)
+
+Add to your Modal secret:
+```bash
+modal secret create oauth-credentials \
+  GOOGLE_CLIENT_ID="..." \
+  GOOGLE_CLIENT_SECRET="..." \
+  JWT_SECRET="..." \
+  AUTHORIZED_USERS="alice@gmail.com,bob@gmail.com"
+```
+
+### Option 2: YAML File (more maintainable)
+
+1. Create `authorized_users.yaml`:
+```yaml
+authorized_users:
+  - alice@gmail.com
+  - bob@gmail.com
+  - charlie@example.com
+```
+
+2. Add to Modal image and set env var:
+```python
+# In api.py, add file to image:
+image = image.add_local_file("authorized_users.yaml", "/app/authorized_users.yaml")
+
+# Set AUTHORIZED_USERS_FILE in Modal secret:
+AUTHORIZED_USERS_FILE="/app/authorized_users.yaml"
+```
+
+### Behavior
+
+- **Authenticated + Authorized**: Access granted
+- **Authenticated + Not Authorized**: 403 Forbidden with message
+- **Not Authenticated**: Redirect to Google login
+
+### Future Backends
+
+The authorization system uses a clean abstraction (`AuthorizationProvider`) that can be swapped out for:
+- Database (SQLite, PostgreSQL)
+- Cloud services (Firebase, Auth0)
+- API calls to external service
+- Role-based access control (RBAC)
+
+See `authorization.py` for implementation details.
 
 ## Auth Endpoints
 
