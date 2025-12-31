@@ -25,13 +25,36 @@ A Discord bot integration for [Modaletta](https://github.com/jakemannix/modalett
 
 2. **Install the main Modaletta package**:
    ```bash
-   uv sync
+   cd modaletta
+   
+   # Create and activate virtual environment (recommended)
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   
+   # Or use uv for faster installation (install from https://docs.astral.sh/uv/)
+   # uv venv && source .venv/bin/activate
+   
+   # Install the package
+   pip install -e .
+   cd ..
    ```
 
 3. **Install Discord bot dependencies**:
    ```bash
    cd discord
-   uv venv && uv pip install -r requirements.txt
+   
+   # Create and activate virtual environment (recommended)
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   
+   # Or use uv for faster installation
+   # uv venv && source .venv/bin/activate
+   
+   # Install the bot
+   pip install -e .
+   
+   # Optionally install with modaletta integration
+   # pip install -e ".[modaletta]"
    ```
 
 ## Configuration

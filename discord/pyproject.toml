@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "modaletta-discord"
+version = "0.1.0"
+description = "Discord bot integration for Modaletta AI agents"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Jake Mannix", email = "jake.mannix@gmail.com"},
+]
+keywords = ["discord", "bot", "ai", "agents", "letta", "modaletta"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "discord.py",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio",
+    "ruff",
+    "mypy",
+]
+
+# Optional: Add modaletta integration
+modaletta = [
+    "modaletta",
+]
+
+[project.urls]
+Homepage = "https://github.com/jakemannix/modaletta"
+Repository = "https://github.com/jakemannix/modaletta"
+Issues = "https://github.com/jakemannix/modaletta/issues"
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "COM", "C4", "ISC", "G", "PIE", "PT", "Q", "SIM", "TID", "ARG", "PTH", "ERA", "RUF"]
+ignore = ["ANN101", "ANN102", "COM812", "ISC001"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+
