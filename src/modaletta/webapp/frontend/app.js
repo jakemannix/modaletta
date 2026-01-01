@@ -254,7 +254,6 @@
             window.history.replaceState({}, '', window.location.pathname);
         }
     }
-    let currentSessionTranscript = ''; // Accumulated transcript for current recording session
 
     // Audio context for beep sounds
     let audioContext = null;

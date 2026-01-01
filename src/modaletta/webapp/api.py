@@ -168,12 +168,13 @@ def setup_auth_middleware(app: FastAPI) -> None:
                             logger.warning(f"Unauthorized access attempt by {token_data.email}")
                             if path.startswith("/api/"):
                                 return JSONResponse(
-                                    {"detail": f"User {token_data.email} is not authorized to access this application"},
+                                    {"detail": "User is not authorized to access this application"},
                                     status_code=403
                                 )
                             else:
                                 # Redirect to unauthorized page
-                                return RedirectResponse(url=f"/unauthorized.html?email={token_data.email}")
+                                from urllib.parse import quote
+                                return RedirectResponse(url=f"/unauthorized.html?email={quote(token_data.email, safe='')}")
                 except Exception as e:
                     logger.error(f"Auth middleware error: {e}")
             

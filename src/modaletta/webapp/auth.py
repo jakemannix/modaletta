@@ -423,7 +423,8 @@ def create_auth_router():
         # Check for errors
         if error:
             logger.error(f"OAuth error: {error}")
-            return RedirectResponse(url="/?auth_error=" + error)
+            from urllib.parse import quote
+            return RedirectResponse(url="/?auth_error=" + quote(error, safe=""))
 
         if not code or not state:
             logger.error("Missing code or state in callback")

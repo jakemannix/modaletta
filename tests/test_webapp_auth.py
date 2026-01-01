@@ -1,7 +1,6 @@
 """Comprehensive tests for OAuth authentication module."""
 
 import os
-import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
