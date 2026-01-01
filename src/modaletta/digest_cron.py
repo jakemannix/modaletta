@@ -9,6 +9,7 @@ Created: 2025-12-30
 
 import modal
 from datetime import datetime
+from pathlib import Path
 
 # Create Modal app
 app = modal.App("nameless-digest")
@@ -20,9 +21,23 @@ image = modal.Image.debian_slim().pip_install(
     "letta-client",
 )
 
+# Mount the config file into the Modal container
+config_mount = modal.Mount.from_local_file(
+    local_path=Path(__file__).parent / "digest_config.yaml",
+    remote_path="/root/digest_config.yaml",
+)
+
+
+def load_config():
+    """Load configuration from YAML file."""
+    import yaml
+    with open("/root/digest_config.yaml", "r") as f:
+        return yaml.safe_load(f)
+
 
 @app.function(
     image=image,
+    mounts=[config_mount],
     secrets=[
         modal.Secret.from_name("letta-credentials"),  # LETTA_API_KEY, LETTA_BASE_URL
     ],
@@ -33,21 +48,20 @@ def deliver_digest():
     import requests
     import os
     
-    BLUESKY_PUBLIC_API = "https://public.api.bsky.app/xrpc"
+    config = load_config()
+    bsky_config = config.get("bluesky", {})
+    digest_config = config.get("digest", {})
     
-    SOURCES = [
-        ("void.comind.network", "Void"),
-        ("luna.pds.witchcraft.systems", "Luna"),
-        ("herald.comind.network", "Herald"),
-        ("archivist.comind.network", "Archivist"),
-        ("yetanotheruseless.com", "Jake"),
-    ]
+    api_base = bsky_config.get("api_base", "https://public.api.bsky.app/xrpc")
+    timeout = bsky_config.get("timeout", 10)
+    limit = bsky_config.get("default_limit", 20)
+    sources = bsky_config.get("sources", [])
     
     def fetch_feed(handle: str, limit: int = 10) -> list:
-        url = f"{BLUESKY_PUBLIC_API}/app.bsky.feed.getAuthorFeed"
+        url = f"{api_base}/app.bsky.feed.getAuthorFeed"
         params = {"actor": handle, "limit": limit, "filter": "posts_no_replies"}
         try:
-            resp = requests.get(url, params=params, timeout=10)
+            resp = requests.get(url, params=params, timeout=timeout)
             resp.raise_for_status()
             return resp.json().get("feed", [])
         except Exception as e:
@@ -80,9 +94,12 @@ def deliver_digest():
     ]
     
     total = 0
-    for handle, name in SOURCES:
-        lines.append(f"## {name} (@{handle})")
-        feed = fetch_feed(handle, limit=10)
+    for source in sources:
+        handle = source.get("handle")
+        description = source.get("description", handle)
+        
+        lines.append(f"## {description} (@{handle})")
+        feed = fetch_feed(handle, limit=limit)
         
         posts = []
         for item in feed[:5]:  # Limit per source
@@ -140,7 +157,7 @@ def test():
     print(f"Result: {result}")
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("letta-credentials")])
+@app.function(image=image, mounts=[config_mount], secrets=[modal.Secret.from_name("letta-credentials")])
 def trigger_digest():
     """Manually trigger digest delivery."""
     return deliver_digest.local()
