@@ -160,7 +160,7 @@ class ModalettaClient:
         Yields:
             Message chunks with proper message_type field.
         """
-        stream = self.letta_client.agents.messages.create_stream(
+        stream = self.letta_client.agents.messages.stream(
             agent_id=agent_id,
             messages=[{"role": role, "content": message}],
             stream_tokens=stream_tokens,
