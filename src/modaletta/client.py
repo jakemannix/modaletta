@@ -199,10 +199,19 @@ class ModalettaClient:
         if after:
             kwargs["after"] = after
         
-        # Letta API returns a SyncArrayPage, iterate to get messages
+        # Letta API returns a SyncArrayPage which auto-paginates when iterated
+        # We only want the first page, so use .data to get just those items
         page = self.letta_client.agents.messages.list(**kwargs)
-        # SyncArrayPage is iterable - collect all messages from the page
-        return [msg.model_dump() for msg in page]
+        # Access .data for just the first page's items (not all pages)
+        messages = getattr(page, 'data', None)
+        if messages is None:
+            # Fallback: if no .data attribute, take only 'limit' items
+            messages = []
+            for i, msg in enumerate(page):
+                if i >= limit:
+                    break
+                messages.append(msg)
+        return [msg.model_dump() for msg in messages]
 
     def get_agent_memory(self, agent_id: str) -> Dict[str, Any]:
         """Get agent memory state.

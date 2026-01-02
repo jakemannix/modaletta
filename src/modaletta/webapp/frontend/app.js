@@ -424,12 +424,20 @@
     /**
      * Setup infinite scroll to load older messages
      */
+    let scrollDebounceTimeout = null;
+    
     function setupInfiniteScroll() {
         const chatContainer = document.getElementById('chat-container');
         
         chatContainer.addEventListener('scroll', () => {
+            // Debounce scroll events
+            if (scrollDebounceTimeout) return;
+            
             // Check if scrolled near the top
             if (chatContainer.scrollTop < 100 && hasMoreMessages && !isLoadingHistory && currentAgentId) {
+                scrollDebounceTimeout = setTimeout(() => {
+                    scrollDebounceTimeout = null;
+                }, 500);  // Prevent another scroll trigger for 500ms
                 loadMessageHistory(oldestMessageId);
             }
         });
