@@ -1,13 +1,18 @@
 """Modaletta Web Chat API - FastAPI endpoints served via Modal."""
 
+import asyncio
+import json
 import logging
 import time
+import uuid
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
 import modal
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -79,6 +84,93 @@ class ChatResponse(BaseModel):
 
     messages: list[dict[str, Any]]
     include_debug: bool = False  # Whether debug messages should be shown
+
+
+class StreamMessageRequest(BaseModel):
+    """Request body for streaming message endpoint."""
+
+    agent_id: str
+    message: str
+    role: str = "user"
+    project_id: str | None = None
+    metadata: UserMetadata | None = None
+    include_debug: bool = False
+    idempotency_key: str | None = None  # Client-provided key to prevent duplicates
+
+
+# =============================================================================
+# Idempotency Store
+# =============================================================================
+
+class IdempotencyStore:
+    """In-memory store for tracking in-flight and completed requests.
+    
+    Prevents duplicate message sends when the client retries due to timeouts.
+    In production, this should be backed by Redis or similar.
+    """
+    
+    def __init__(self, max_entries: int = 1000, ttl_seconds: int = 300):
+        self.max_entries = max_entries
+        self.ttl_seconds = ttl_seconds
+        self._store: OrderedDict[str, dict] = OrderedDict()
+        self._lock = asyncio.Lock()
+    
+    async def check_or_start(self, key: str) -> dict | None:
+        """Check if request is in-flight or completed. Returns cached result or None."""
+        async with self._lock:
+            self._cleanup_expired()
+            
+            if key in self._store:
+                entry = self._store[key]
+                if entry["status"] == "in_flight":
+                    return {"status": "in_flight", "message": "Request already in progress"}
+                elif entry["status"] == "completed":
+                    return {"status": "completed", "result": entry.get("result")}
+            
+            # Start new request
+            self._store[key] = {
+                "status": "in_flight",
+                "started_at": time.time(),
+            }
+            # Move to end (LRU behavior)
+            self._store.move_to_end(key)
+            return None
+    
+    async def complete(self, key: str, result: Any = None) -> None:
+        """Mark a request as completed with optional cached result."""
+        async with self._lock:
+            if key in self._store:
+                self._store[key] = {
+                    "status": "completed",
+                    "completed_at": time.time(),
+                    "result": result,
+                }
+                self._store.move_to_end(key)
+    
+    async def fail(self, key: str) -> None:
+        """Remove a failed request from the store so it can be retried."""
+        async with self._lock:
+            self._store.pop(key, None)
+    
+    def _cleanup_expired(self) -> None:
+        """Remove expired entries and enforce max size."""
+        now = time.time()
+        expired = []
+        for key, entry in self._store.items():
+            timestamp = entry.get("completed_at") or entry.get("started_at", 0)
+            if now - timestamp > self.ttl_seconds:
+                expired.append(key)
+        
+        for key in expired:
+            del self._store[key]
+        
+        # Enforce max size
+        while len(self._store) > self.max_entries:
+            self._store.popitem(last=False)
+
+
+# Global idempotency store
+_idempotency_store = IdempotencyStore()
 
 
 # FastAPI app
@@ -425,6 +517,130 @@ async def send_message(request: SendMessageRequest, http_request: Request) -> Ch
         elapsed = time.time() - start_time
         logger.error(f"send_message failed after {elapsed:.2f}s: {type(e).__name__}: {e}")
         raise
+
+
+@web_app.post("/api/chat/stream")
+async def send_message_stream(request: StreamMessageRequest, http_request: Request):
+    """Send a message to an agent with streaming response (SSE).
+    
+    Streams chunks as Server-Sent Events. Each chunk is a JSON object with:
+    - type: "chunk" | "done" | "error" | "in_flight"
+    - data: The message chunk or final result
+    - message_type: Type of Letta message (for filtering)
+    
+    Supports idempotency_key to prevent duplicate sends on retry.
+    """
+    from modaletta.client import ModalettaClient
+    from modaletta.config import ModalettaConfig
+    from modaletta.webapp.auth import get_token_from_request, decode_jwt_token, OAuthConfig
+
+    # Check idempotency if key provided
+    idempotency_key = request.idempotency_key
+    if idempotency_key:
+        cached = await _idempotency_store.check_or_start(idempotency_key)
+        if cached:
+            if cached["status"] == "in_flight":
+                # Request already in progress - let client know
+                async def in_flight_response():
+                    yield f"data: {json.dumps({'type': 'in_flight', 'message': 'Request already in progress'})}\n\n"
+                return StreamingResponse(
+                    in_flight_response(),
+                    media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+                )
+            elif cached["status"] == "completed":
+                # Return cached result
+                async def cached_response():
+                    result = cached.get("result", [])
+                    for msg in result:
+                        yield f"data: {json.dumps({'type': 'chunk', 'data': msg, 'message_type': msg.get('message_type', 'unknown')})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'cached': True})}\n\n"
+                return StreamingResponse(
+                    cached_response(),
+                    media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+                )
+
+    logger.info(f"send_message_stream called: agent_id={request.agent_id}, idempotency_key={idempotency_key}")
+    start_time = time.time()
+
+    async def generate():
+        all_messages = []  # Collect for idempotency cache
+        try:
+            config = ModalettaConfig.from_env()
+            client = ModalettaClient(config, project_id=request.project_id)
+            
+            # Extract user info from JWT token
+            user_email = None
+            user_name = None
+            token = get_token_from_request(http_request)
+            if token:
+                try:
+                    oauth_config = OAuthConfig.from_env()
+                    token_data = decode_jwt_token(token, oauth_config)
+                    if token_data:
+                        user_email = token_data.email
+                        user_name = token_data.name
+                except Exception as e:
+                    logger.warning(f"Could not decode token: {e}")
+            
+            # Format message
+            formatted_message = format_message_with_user_and_context(
+                message=request.message,
+                user_email=user_email,
+                user_name=user_name,
+                metadata=request.metadata
+            )
+            
+            logger.info(f"Starting stream for agent {request.agent_id}...")
+            
+            # Stream messages from Letta
+            for chunk in client.send_message_stream(
+                agent_id=request.agent_id,
+                message=formatted_message,
+                role=request.role,
+                stream_tokens=False,  # Stream complete steps, not tokens
+            ):
+                all_messages.append(chunk)
+                message_type = chunk.get("message_type", "unknown")
+                
+                # Send chunk to client
+                event_data = {
+                    "type": "chunk",
+                    "data": chunk,
+                    "message_type": message_type,
+                }
+                yield f"data: {json.dumps(event_data)}\n\n"
+            
+            # Done streaming
+            elapsed = time.time() - start_time
+            logger.info(f"Stream completed in {elapsed:.2f}s, {len(all_messages)} messages")
+            
+            yield f"data: {json.dumps({'type': 'done', 'total_messages': len(all_messages)})}\n\n"
+            
+            # Cache result for idempotency
+            if idempotency_key:
+                await _idempotency_store.complete(idempotency_key, all_messages)
+                
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"Stream failed after {elapsed:.2f}s: {type(e).__name__}: {e}")
+            
+            # Remove from idempotency store so retry can work
+            if idempotency_key:
+                await _idempotency_store.fail(idempotency_key)
+            
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )
 
 
 class MessageHistoryResponse(BaseModel):

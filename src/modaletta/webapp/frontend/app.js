@@ -109,6 +109,10 @@
     let hasMoreMessages = true;
     let isLoadingHistory = false;
     let debugMode = localStorage.getItem('debugMode') === 'true';
+    
+    // Streaming state
+    let useStreaming = localStorage.getItem('useStreaming') !== 'false'; // Default to true
+    let currentIdempotencyKey = null;
 
     // ==========================================================================
     // User Metadata Collection
@@ -448,7 +452,24 @@
         if (debugToggle) {
             debugToggle.checked = debugMode;
         }
+        
+        const streamingToggle = document.getElementById('streaming-toggle');
+        if (streamingToggle) {
+            streamingToggle.checked = useStreaming;
+        }
     }
+
+    /**
+     * Toggle streaming mode
+     */
+    function toggleStreaming() {
+        useStreaming = !useStreaming;
+        localStorage.setItem('useStreaming', useStreaming);
+        updateDebugUI();
+        debugLog('STREAMING', 'Streaming mode toggled', { useStreaming });
+    }
+    // Expose to window for HTML onclick handler
+    window.toggleStreaming = toggleStreaming;
 
     // Audio context for beep sounds
     let audioContext = null;
@@ -656,7 +677,7 @@
         });
     }
 
-    // Send message to agent
+    // Send message to agent (routes to streaming or regular based on setting)
     async function sendMessage() {
         const message = elements.messageInput.value.trim();
 
@@ -675,11 +696,157 @@
         isLoading = true;
         elements.sendBtn.disabled = true;
 
-        // Show loading indicator
+        if (useStreaming) {
+            await sendMessageStreaming(message);
+        } else {
+            await sendMessageRegular(message);
+        }
+    }
+
+    // Send message with streaming response (SSE)
+    async function sendMessageStreaming(message) {
+        // Generate idempotency key for this request
+        currentIdempotencyKey = crypto.randomUUID();
+        
+        // Show loading indicator that we'll update progressively
+        const loadingMsg = addMessage('Thinking...', 'loading');
+        let currentAgentMsg = null;  // For accumulating streamed response
+        let hasResponse = false;
+
+        try {
+            const metadata = collectUserMetadata();
+            
+            const response = await fetch(`${API_BASE}/chat/stream`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    agent_id: currentAgentId,
+                    message: message,
+                    role: 'user',
+                    project_id: currentProjectId,
+                    metadata: metadata,
+                    include_debug: debugMode,
+                    idempotency_key: currentIdempotencyKey
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            // Clear input on successful connection
+            elements.messageInput.value = '';
+            elements.messageInput.style.height = 'auto';
+
+            // Read the SSE stream
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                
+                // Process complete SSE events
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';  // Keep incomplete line in buffer
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const jsonStr = line.slice(6);
+                        if (!jsonStr) continue;
+
+                        try {
+                            const event = JSON.parse(jsonStr);
+                            
+                            if (event.type === 'chunk') {
+                                // Remove loading message on first chunk
+                                if (loadingMsg.parentNode) {
+                                    loadingMsg.remove();
+                                }
+
+                                const msgType = event.message_type;
+                                const data = event.data;
+
+                                // Handle different message types
+                                if (msgType === 'assistant_message') {
+                                    const text = data.content;
+                                    if (text) {
+                                        // Create or update agent message
+                                        if (!currentAgentMsg) {
+                                            currentAgentMsg = addMessage(text, 'agent');
+                                        } else {
+                                            currentAgentMsg.textContent = text;
+                                        }
+                                        hasResponse = true;
+                                    }
+                                } else if (debugMode) {
+                                    // Show debug messages progressively
+                                    if (msgType === 'reasoning_message') {
+                                        const text = data.reasoning || data.content;
+                                        if (text) {
+                                            addMessage(`💭 ${text}`, 'debug reasoning');
+                                        }
+                                    } else if (msgType === 'tool_call_message') {
+                                        const toolName = data.tool_call?.name || data.name || 'unknown';
+                                        const toolArgs = data.tool_call?.arguments || data.arguments || {};
+                                        addMessage(`🔧 Tool: ${toolName}(${JSON.stringify(toolArgs)})`, 'debug tool');
+                                    } else if (msgType === 'tool_return_message') {
+                                        const result = data.tool_return || data.content || '';
+                                        addMessage(`📤 Result: ${result}`, 'debug tool');
+                                    }
+                                }
+                            } else if (event.type === 'done') {
+                                debugLog('STREAM', 'Stream completed', { 
+                                    total_messages: event.total_messages,
+                                    cached: event.cached 
+                                });
+                            } else if (event.type === 'in_flight') {
+                                // Request already in progress
+                                loadingMsg.textContent = 'Request in progress...';
+                            } else if (event.type === 'error') {
+                                throw new Error(event.error);
+                            }
+                        } catch (parseError) {
+                            console.warn('Failed to parse SSE event:', parseError);
+                        }
+                    }
+                }
+            }
+
+            // Final cleanup
+            if (loadingMsg.parentNode) {
+                loadingMsg.remove();
+            }
+
+            if (!hasResponse && !debugMode) {
+                addMessage('Agent responded but no message content found.', 'system');
+            }
+
+        } catch (error) {
+            console.error('Error in streaming message:', error);
+            if (loadingMsg.parentNode) {
+                loadingMsg.remove();
+            }
+            addMessage(`Error: ${error.message}`, 'system');
+        } finally {
+            isLoading = false;
+            elements.sendBtn.disabled = false;
+            elements.messageInput.focus();
+            currentIdempotencyKey = null;
+        }
+    }
+
+    // Send message with regular (non-streaming) response
+    async function sendMessageRegular(message) {
         const loadingMsg = addMessage('Thinking...', 'loading');
 
         try {
-            // Collect user metadata to send with message
             const metadata = collectUserMetadata();
             
             const response = await fetch(`${API_BASE}/chat`, {
@@ -698,7 +865,6 @@
                 })
             });
 
-            // Remove loading message
             loadingMsg.remove();
 
             if (!response.ok) {
@@ -706,13 +872,11 @@
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 
-            // SUCCESS - now clear the input (d)
             elements.messageInput.value = '';
             elements.messageInput.style.height = 'auto';
 
             const data = await response.json();
 
-            // Process response messages
             if (data.messages && Array.isArray(data.messages)) {
                 let hasResponse = false;
                 const showDebug = data.include_debug || debugMode;
@@ -720,16 +884,13 @@
                 data.messages.forEach(msg => {
                     const msgType = msg.message_type;
                     
-                    // Always show assistant messages
                     if (msgType === 'assistant_message') {
                         const text = msg.content;
                         if (text) {
                             addMessage(text, 'agent');
                             hasResponse = true;
                         }
-                    }
-                    // Show debug messages if debug mode is on
-                    else if (showDebug) {
+                    } else if (showDebug) {
                         if (msgType === 'reasoning_message') {
                             const text = msg.reasoning || msg.content;
                             if (text) {
