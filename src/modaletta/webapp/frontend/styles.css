@@ -456,3 +456,17 @@ header h1 {
     color: var(--text-light);
     font-size: 0.9rem;
 }
+
+/* Streaming indicator */
+.message.streaming-indicator {
+    background: #f0f7ff;
+    color: #1976d2;
+    font-style: italic;
+    border-left: 3px solid #1976d2;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}

@@ -737,10 +737,19 @@
         // Generate idempotency key for this request
         currentIdempotencyKey = crypto.randomUUID();
         
-        // Show loading indicator that we'll update progressively
-        const loadingMsg = addMessage('Thinking...', 'loading');
-        let currentAgentMsg = null;  // For accumulating streamed response
+        // Show thinking indicator - stays at bottom as content streams in above it
+        const thinkingMsg = addMessage('⏳ Thinking...', 'loading streaming-indicator');
         let hasResponse = false;
+
+        // Helper to insert message BEFORE the thinking indicator
+        function insertBeforeThinking(text, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = text;
+            elements.messagesContainer.insertBefore(messageDiv, thinkingMsg);
+            scrollToBottom();
+            return messageDiv;
+        }
 
         try {
             const metadata = collectUserMetadata();
@@ -794,24 +803,17 @@
                             const event = JSON.parse(jsonStr);
                             
                             if (event.type === 'chunk') {
-                                // Remove loading message on first chunk
-                                if (loadingMsg.parentNode) {
-                                    loadingMsg.remove();
-                                }
-
                                 const msgType = event.message_type;
                                 const data = event.data;
 
-                                // Handle different message types
+                                // Update thinking indicator to show activity
+                                thinkingMsg.textContent = `⏳ Processing${msgType ? ` (${msgType})` : ''}...`;
+
+                                // Handle different message types - insert above thinking indicator
                                 if (msgType === 'assistant_message') {
                                     const text = data.content;
                                     if (text) {
-                                        // Create or update agent message
-                                        if (!currentAgentMsg) {
-                                            currentAgentMsg = addMessage(text, 'agent');
-                                        } else {
-                                            currentAgentMsg.textContent = text;
-                                        }
+                                        insertBeforeThinking(text, 'agent');
                                         hasResponse = true;
                                     }
                                 } else if (debugMode) {
@@ -819,15 +821,15 @@
                                     if (msgType === 'reasoning_message') {
                                         const text = data.reasoning || data.content;
                                         if (text) {
-                                            addMessage(`💭 ${text}`, 'debug reasoning');
+                                            insertBeforeThinking(`💭 ${text}`, 'debug reasoning');
                                         }
                                     } else if (msgType === 'tool_call_message') {
                                         const toolName = data.tool_call?.name || data.name || 'unknown';
                                         const toolArgs = data.tool_call?.arguments || data.arguments || {};
-                                        addMessage(`🔧 Tool: ${toolName}(${JSON.stringify(toolArgs)})`, 'debug tool');
+                                        insertBeforeThinking(`🔧 Tool: ${toolName}(${JSON.stringify(toolArgs)})`, 'debug tool');
                                     } else if (msgType === 'tool_return_message') {
                                         const result = data.tool_return || data.content || '';
-                                        addMessage(`📤 Result: ${result}`, 'debug tool');
+                                        insertBeforeThinking(`📤 Result: ${result}`, 'debug tool');
                                     }
                                 }
                             } else if (event.type === 'done') {
@@ -837,7 +839,7 @@
                                 });
                             } else if (event.type === 'in_flight') {
                                 // Request already in progress
-                                loadingMsg.textContent = 'Request in progress...';
+                                thinkingMsg.textContent = '⏳ Request in progress...';
                             } else if (event.type === 'error') {
                                 throw new Error(event.error);
                             }
@@ -848,9 +850,9 @@
                 }
             }
 
-            // Final cleanup
-            if (loadingMsg.parentNode) {
-                loadingMsg.remove();
+            // Remove thinking indicator when done
+            if (thinkingMsg.parentNode) {
+                thinkingMsg.remove();
             }
 
             if (!hasResponse && !debugMode) {
