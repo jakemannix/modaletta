@@ -71,12 +71,14 @@ class SendMessageRequest(BaseModel):
     role: str = "user"
     project_id: str | None = None
     metadata: UserMetadata | None = None
+    include_debug: bool = False  # Include tool calls, reasoning, etc.
 
 
 class ChatResponse(BaseModel):
     """Response from chat endpoint."""
 
     messages: list[dict[str, Any]]
+    include_debug: bool = False  # Whether debug messages should be shown
 
 
 # FastAPI app
@@ -417,11 +419,78 @@ async def send_message(request: SendMessageRequest, http_request: Request) -> Ch
         msg_types = [m.get("message_type", "unknown") for m in messages]
         logger.info(f"Message types: {msg_types}")
 
-        return ChatResponse(messages=messages)
+        return ChatResponse(messages=messages, include_debug=request.include_debug)
 
     except Exception as e:
         elapsed = time.time() - start_time
         logger.error(f"send_message failed after {elapsed:.2f}s: {type(e).__name__}: {e}")
+        raise
+
+
+class MessageHistoryResponse(BaseModel):
+    """Response for message history endpoint."""
+    
+    messages: list[dict[str, Any]]
+    has_more: bool
+    oldest_id: str | None = None
+
+
+@web_app.get("/api/agents/{agent_id}/messages")
+async def get_message_history(
+    agent_id: str,
+    limit: int = 10,
+    before: str | None = None,
+    project_id: str | None = None,
+) -> MessageHistoryResponse:
+    """Get message history for an agent with pagination.
+    
+    Args:
+        agent_id: The agent ID.
+        limit: Maximum number of messages to return (default 10).
+        before: Message ID cursor - return messages older than this ID.
+        project_id: Optional project ID for multi-project setups.
+    
+    Returns:
+        MessageHistoryResponse with messages, pagination info.
+    """
+    from modaletta.client import ModalettaClient
+    from modaletta.config import ModalettaConfig
+
+    logger.info(f"get_message_history called: agent_id={agent_id}, limit={limit}, before={before}")
+    start_time = time.time()
+
+    try:
+        config = ModalettaConfig.from_env()
+        client = ModalettaClient(config, project_id=project_id)
+
+        # Request one extra to determine if there are more messages
+        messages = client.get_messages(
+            agent_id=agent_id,
+            limit=limit + 1,
+            before=before,
+            order="desc",  # Newest first
+        )
+        
+        # Check if there are more messages
+        has_more = len(messages) > limit
+        if has_more:
+            messages = messages[:limit]  # Trim to requested limit
+        
+        # Get the oldest message ID for pagination
+        oldest_id = messages[-1].get("id") if messages else None
+        
+        elapsed = time.time() - start_time
+        logger.info(f"get_message_history returned {len(messages)} messages in {elapsed:.2f}s")
+        
+        return MessageHistoryResponse(
+            messages=messages,
+            has_more=has_more,
+            oldest_id=oldest_id,
+        )
+
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"get_message_history failed after {elapsed:.2f}s: {type(e).__name__}: {e}")
         raise
 
 

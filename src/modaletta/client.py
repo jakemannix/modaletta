@@ -169,6 +169,39 @@ class ModalettaClient:
         for chunk in stream:
             yield chunk.model_dump()
 
+    def get_messages(
+        self,
+        agent_id: str,
+        limit: int = 10,
+        before: Optional[str] = None,
+        after: Optional[str] = None,
+        order: str = "desc",
+    ) -> List[Dict[str, Any]]:
+        """Get message history for an agent.
+
+        Args:
+            agent_id: Agent ID.
+            limit: Maximum number of messages to return.
+            before: Message ID cursor - return messages before this ID.
+            after: Message ID cursor - return messages after this ID.
+            order: Sort order - "desc" for newest first, "asc" for oldest first.
+
+        Returns:
+            List of messages with message_type, content, date, etc.
+        """
+        kwargs: Dict[str, Any] = {
+            "agent_id": agent_id,
+            "limit": limit,
+            "order": order,
+        }
+        if before:
+            kwargs["before"] = before
+        if after:
+            kwargs["after"] = after
+        
+        messages = self.letta_client.agents.messages.list(**kwargs)
+        return [msg.model_dump() for msg in messages]
+
     def get_agent_memory(self, agent_id: str) -> Dict[str, Any]:
         """Get agent memory state.
 

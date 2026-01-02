@@ -78,6 +78,10 @@
     window.downloadVoiceLogs = downloadLogs;
     window.getVoiceLogs = () => debugLogs;
     window.flushVoiceLogs = flushLogsToServer;
+    
+    // Expose toggleDebugMode globally for the HTML onclick handler
+    // (will be defined later, this just creates a placeholder)
+    window.toggleDebugMode = null;
 
     // DOM Elements
     const elements = {
@@ -99,6 +103,12 @@
     let maxRecordingTimeout = null;
     let textBeforeRecording = ''; // Text in input before we started recording
     let authState = { authenticated: false, user: null, authEnabled: false };
+    
+    // Message history state
+    let oldestMessageId = null;
+    let hasMoreMessages = true;
+    let isLoadingHistory = false;
+    let debugMode = localStorage.getItem('debugMode') === 'true';
 
     // ==========================================================================
     // User Metadata Collection
@@ -255,6 +265,191 @@
         }
     }
 
+    // ==========================================================================
+    // Message History
+    // ==========================================================================
+
+    /**
+     * Load message history for the current agent
+     */
+    async function loadMessageHistory(before = null) {
+        if (!currentAgentId || isLoadingHistory) return;
+        if (!before && !hasMoreMessages) return;  // Don't reload if we know there's no more
+        
+        isLoadingHistory = true;
+        debugLog('HISTORY', 'Loading message history', { agent_id: currentAgentId, before });
+        
+        try {
+            const params = new URLSearchParams({
+                limit: '10',
+            });
+            if (before) {
+                params.set('before', before);
+            }
+            if (currentProjectId) {
+                params.set('project_id', currentProjectId);
+            }
+            
+            const response = await fetch(
+                `${API_BASE}/agents/${currentAgentId}/messages?${params}`,
+                { credentials: 'include' }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            debugLog('HISTORY', 'Loaded messages', { count: data.messages.length, has_more: data.has_more });
+            
+            // Update pagination state
+            hasMoreMessages = data.has_more;
+            if (data.oldest_id) {
+                oldestMessageId = data.oldest_id;
+            }
+            
+            // Display messages (they come newest-first, so reverse for display)
+            const messages = data.messages.reverse();
+            const container = elements.messagesContainer;
+            const scrollHeightBefore = container.scrollHeight;
+            
+            // Insert messages at the top
+            for (const msg of messages) {
+                prependHistoryMessage(msg);
+            }
+            
+            // Preserve scroll position when loading older messages
+            if (before) {
+                const scrollHeightAfter = container.scrollHeight;
+                const chatContainer = document.getElementById('chat-container');
+                chatContainer.scrollTop += (scrollHeightAfter - scrollHeightBefore);
+            }
+            
+        } catch (error) {
+            debugLog('HISTORY', 'Failed to load message history', { error: error.message });
+        } finally {
+            isLoadingHistory = false;
+        }
+    }
+
+    /**
+     * Prepend a historical message to the chat (at the top)
+     */
+    function prependHistoryMessage(msg) {
+        const messageType = msg.message_type || 'unknown';
+        const content = extractMessageContent(msg);
+        
+        if (!content) return;  // Skip empty messages
+        
+        // Determine display type based on message_type
+        let displayType = 'system';
+        if (messageType === 'user_message') {
+            displayType = 'user';
+        } else if (messageType === 'assistant_message') {
+            displayType = 'agent';
+        } else if (messageType === 'tool_call_message' || messageType === 'tool_return_message') {
+            if (!debugMode) return;  // Skip tool messages unless debug mode
+            displayType = 'debug';
+        } else if (messageType === 'reasoning_message') {
+            if (!debugMode) return;  // Skip reasoning unless debug mode
+            displayType = 'debug reasoning';
+        } else if (messageType === 'system_message') {
+            displayType = 'system';
+        }
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${displayType}`;
+        messageDiv.textContent = content;
+        messageDiv.dataset.messageId = msg.id;
+        
+        // Insert at the beginning
+        elements.messagesContainer.insertBefore(messageDiv, elements.messagesContainer.firstChild);
+    }
+
+    /**
+     * Extract display content from a Letta message
+     */
+    function extractMessageContent(msg) {
+        const messageType = msg.message_type || '';
+        
+        // Handle different message types
+        if (messageType === 'user_message') {
+            // User messages have content field
+            if (typeof msg.content === 'string') {
+                // Try to parse JSON content (our enriched format)
+                try {
+                    const parsed = JSON.parse(msg.content);
+                    return parsed.message || msg.content;
+                } catch {
+                    return msg.content;
+                }
+            }
+            return msg.content?.text || msg.content || '';
+        } else if (messageType === 'assistant_message') {
+            // Assistant messages - extract the actual response
+            return msg.content || msg.assistant_message || '';
+        } else if (messageType === 'tool_call_message') {
+            // Tool call - show function name and args
+            const toolCall = msg.tool_call || msg;
+            return `🔧 Tool: ${toolCall.name || 'unknown'}(${JSON.stringify(toolCall.arguments || {})})`;
+        } else if (messageType === 'tool_return_message') {
+            // Tool return - show result
+            return `📤 Tool result: ${msg.tool_return || msg.content || ''}`;
+        } else if (messageType === 'reasoning_message') {
+            // Internal reasoning
+            return `💭 ${msg.reasoning || msg.content || ''}`;
+        } else if (messageType === 'system_message') {
+            return msg.content || msg.message || '';
+        }
+        
+        // Fallback
+        return msg.content || msg.message || '';
+    }
+
+    /**
+     * Setup infinite scroll to load older messages
+     */
+    function setupInfiniteScroll() {
+        const chatContainer = document.getElementById('chat-container');
+        
+        chatContainer.addEventListener('scroll', () => {
+            // Check if scrolled near the top
+            if (chatContainer.scrollTop < 100 && hasMoreMessages && !isLoadingHistory && currentAgentId) {
+                loadMessageHistory(oldestMessageId);
+            }
+        });
+    }
+
+    /**
+     * Toggle debug mode
+     */
+    function toggleDebugMode() {
+        debugMode = !debugMode;
+        localStorage.setItem('debugMode', debugMode);
+        updateDebugUI();
+        debugLog('DEBUG', 'Debug mode toggled', { debugMode });
+        
+        // Reload history to show/hide debug messages
+        if (currentAgentId) {
+            elements.messagesContainer.innerHTML = '';
+            oldestMessageId = null;
+            hasMoreMessages = true;
+            loadMessageHistory();
+        }
+    }
+    // Expose to window for HTML onclick handler
+    window.toggleDebugMode = toggleDebugMode;
+
+    /**
+     * Update debug toggle UI
+     */
+    function updateDebugUI() {
+        const debugToggle = document.getElementById('debug-toggle');
+        if (debugToggle) {
+            debugToggle.checked = debugMode;
+        }
+    }
+
     // Audio context for beep sounds
     let audioContext = null;
 
@@ -308,10 +503,13 @@
         await loadAgents(agentId);
         setupEventListeners();
         setupVoiceInput();
+        setupInfiniteScroll();
         autoResizeTextarea();
+        updateDebugUI();
 
-        // If we have an initial agent, focus the message input
+        // If we have an initial agent, load message history and focus input
         if (currentAgentId) {
+            await loadMessageHistory();
             elements.messageInput.focus();
         }
     }
@@ -401,20 +599,35 @@
     // Setup event listeners
     function setupEventListeners() {
         // Agent selection from dropdown
-        elements.agentSelect.addEventListener('change', (e) => {
+        elements.agentSelect.addEventListener('change', async (e) => {
             currentAgentId = e.target.value;
             elements.agentIdInput.value = '';
             if (currentAgentId) {
+                // Clear messages and load history for new agent
+                elements.messagesContainer.innerHTML = '';
+                oldestMessageId = null;
+                hasMoreMessages = true;
+                await loadMessageHistory();
                 elements.messageInput.focus();
             }
         });
 
-        // Manual agent ID input
+        // Manual agent ID input (debounced)
+        let agentInputTimeout = null;
         elements.agentIdInput.addEventListener('input', (e) => {
             const value = e.target.value.trim();
             if (value) {
                 currentAgentId = value;
                 elements.agentSelect.value = '';
+                
+                // Debounce loading history on manual input
+                clearTimeout(agentInputTimeout);
+                agentInputTimeout = setTimeout(async () => {
+                    elements.messagesContainer.innerHTML = '';
+                    oldestMessageId = null;
+                    hasMoreMessages = true;
+                    await loadMessageHistory();
+                }, 500);
             } else {
                 currentAgentId = elements.agentSelect.value;
             }
@@ -474,12 +687,14 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
+                credentials: 'include',
                 body: JSON.stringify({
                     agent_id: currentAgentId,
                     message: message,
                     role: 'user',
                     project_id: currentProjectId,
-                    metadata: metadata
+                    metadata: metadata,
+                    include_debug: debugMode
                 })
             });
 
@@ -500,21 +715,38 @@
             // Process response messages
             if (data.messages && Array.isArray(data.messages)) {
                 let hasResponse = false;
+                const showDebug = data.include_debug || debugMode;
+                
                 data.messages.forEach(msg => {
-                    // Letta API returns different message types:
-                    // - assistant_message: user-facing response (content field)
-                    // - reasoning_message: internal reasoning (skip)
-                    // - function_call/function_return: tool use (skip for cleaner chat)
-                    if (msg.message_type === 'assistant_message') {
+                    const msgType = msg.message_type;
+                    
+                    // Always show assistant messages
+                    if (msgType === 'assistant_message') {
                         const text = msg.content;
                         if (text) {
                             addMessage(text, 'agent');
                             hasResponse = true;
                         }
                     }
+                    // Show debug messages if debug mode is on
+                    else if (showDebug) {
+                        if (msgType === 'reasoning_message') {
+                            const text = msg.reasoning || msg.content;
+                            if (text) {
+                                addMessage(`💭 ${text}`, 'debug reasoning');
+                            }
+                        } else if (msgType === 'tool_call_message') {
+                            const toolName = msg.tool_call?.name || msg.name || 'unknown';
+                            const toolArgs = msg.tool_call?.arguments || msg.arguments || {};
+                            addMessage(`🔧 Tool: ${toolName}(${JSON.stringify(toolArgs)})`, 'debug tool');
+                        } else if (msgType === 'tool_return_message') {
+                            const result = msg.tool_return || msg.content || '';
+                            addMessage(`📤 Result: ${result}`, 'debug tool');
+                        }
+                    }
                 });
 
-                if (!hasResponse) {
+                if (!hasResponse && !showDebug) {
                     addMessage('Agent responded but no message content found.', 'system');
                 }
             } else {

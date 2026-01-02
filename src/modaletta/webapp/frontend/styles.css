@@ -388,3 +388,71 @@ header h1 {
         font-size: 0.8rem;
     }
 }
+
+/* ==========================================================================
+   Debug Mode Toggle
+   ========================================================================== */
+
+.debug-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: white;
+    transition: all 0.2s;
+}
+
+.debug-toggle-label:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.debug-toggle-label input {
+    margin: 0;
+    cursor: pointer;
+}
+
+.debug-toggle-label input:checked + span {
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+/* ==========================================================================
+   Debug Messages
+   ========================================================================== */
+
+.message.debug {
+    background: #f8f8f8;
+    color: #666;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 0.85em;
+    padding: 8px 12px;
+    border-left: 3px solid #888;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.message.debug.reasoning {
+    background: #fff8e1;
+    border-left-color: #ffc107;
+    color: #6d5d00;
+}
+
+.message.debug.tool {
+    background: #e8f5e9;
+    border-left-color: #4caf50;
+    color: #2e6830;
+}
+
+/* Loading indicator for infinite scroll */
+.loading-history {
+    text-align: center;
+    padding: 12px;
+    color: var(--text-light);
+    font-size: 0.9rem;
+}

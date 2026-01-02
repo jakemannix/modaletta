@@ -23,6 +23,10 @@
                     <option value="">Loading agents...</option>
                 </select>
                 <input type="text" id="agent-id-input" placeholder="Or enter agent ID" aria-label="Agent ID">
+                <label class="debug-toggle-label" title="Show tool calls, reasoning, and other debug info">
+                    <input type="checkbox" id="debug-toggle" onchange="window.toggleDebugMode && window.toggleDebugMode()">
+                    <span>Debug</span>
+                </label>
             </div>
         </header>
 
