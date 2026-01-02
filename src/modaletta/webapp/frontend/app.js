@@ -273,11 +273,24 @@
      * Load message history for the current agent
      */
     async function loadMessageHistory(before = null) {
-        if (!currentAgentId || isLoadingHistory) return;
-        if (!before && !hasMoreMessages) return;  // Don't reload if we know there's no more
+        debugLog('HISTORY', 'loadMessageHistory called', { 
+            currentAgentId, 
+            isLoadingHistory, 
+            hasMoreMessages, 
+            before 
+        });
+        
+        if (!currentAgentId || isLoadingHistory) {
+            debugLog('HISTORY', 'Early return: no agent or already loading');
+            return;
+        }
+        if (!before && !hasMoreMessages) {
+            debugLog('HISTORY', 'Early return: no more messages');
+            return;
+        }
         
         isLoadingHistory = true;
-        debugLog('HISTORY', 'Loading message history', { agent_id: currentAgentId, before });
+        debugLog('HISTORY', 'Fetching message history...', { agent_id: currentAgentId, before });
         
         try {
             const params = new URLSearchParams({
@@ -510,9 +523,13 @@
         updateDebugUI();
 
         // If we have an initial agent, load message history and focus input
+        debugLog('INIT', 'After loadAgents', { currentAgentId, currentProjectId });
         if (currentAgentId) {
+            debugLog('INIT', 'Calling loadMessageHistory from init');
             await loadMessageHistory();
             elements.messageInput.focus();
+        } else {
+            debugLog('INIT', 'No currentAgentId, skipping history load');
         }
     }
 
@@ -604,11 +621,13 @@
         elements.agentSelect.addEventListener('change', async (e) => {
             currentAgentId = e.target.value;
             elements.agentIdInput.value = '';
+            debugLog('HISTORY', 'Agent changed via dropdown', { currentAgentId });
             if (currentAgentId) {
                 // Clear messages and load history for new agent
                 elements.messagesContainer.innerHTML = '';
                 oldestMessageId = null;
                 hasMoreMessages = true;
+                debugLog('HISTORY', 'Calling loadMessageHistory from dropdown change');
                 await loadMessageHistory();
                 elements.messageInput.focus();
             }
