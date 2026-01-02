@@ -687,6 +687,11 @@ async def get_message_history(
             order="desc",  # Newest first
         )
         
+        # Debug: log what we got from Letta
+        logger.info(f"Letta returned {len(messages)} messages")
+        for i, msg in enumerate(messages[:3]):  # Log first 3
+            logger.info(f"  Message {i}: type={msg.get('message_type')}, id={msg.get('id')}")
+        
         # Check if there are more messages
         has_more = len(messages) > limit
         if has_more:
