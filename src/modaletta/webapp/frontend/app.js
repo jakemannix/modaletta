@@ -339,6 +339,8 @@
         const messageType = msg.message_type || 'unknown';
         const content = extractMessageContent(msg);
         
+        debugLog('HISTORY', 'Processing message', { id: msg.id, type: messageType, hasContent: !!content, content: content?.substring?.(0, 50) });
+        
         if (!content) return;  // Skip empty messages
         
         // Determine display type based on message_type

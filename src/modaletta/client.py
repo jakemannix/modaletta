@@ -199,8 +199,10 @@ class ModalettaClient:
         if after:
             kwargs["after"] = after
         
-        messages = self.letta_client.agents.messages.list(**kwargs)
-        return [msg.model_dump() for msg in messages]
+        # Letta API returns a SyncArrayPage, iterate to get messages
+        page = self.letta_client.agents.messages.list(**kwargs)
+        # SyncArrayPage is iterable - collect all messages from the page
+        return [msg.model_dump() for msg in page]
 
     def get_agent_memory(self, agent_id: str) -> Dict[str, Any]:
         """Get agent memory state.
