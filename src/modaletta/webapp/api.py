@@ -6,8 +6,17 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    """JSON encoder that handles datetime objects."""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 import modal
 from fastapi import FastAPI, Request
@@ -553,7 +562,7 @@ async def send_message_stream(request: StreamMessageRequest, http_request: Reque
                 async def cached_response():
                     result = cached.get("result", [])
                     for msg in result:
-                        yield f"data: {json.dumps({'type': 'chunk', 'data': msg, 'message_type': msg.get('message_type', 'unknown')})}\n\n"
+                        yield f"data: {json.dumps({'type': 'chunk', 'data': msg, 'message_type': msg.get('message_type', 'unknown')}, cls=DateTimeEncoder)}\n\n"
                     yield f"data: {json.dumps({'type': 'done', 'cached': True})}\n\n"
                 return StreamingResponse(
                     cached_response(),
@@ -610,7 +619,7 @@ async def send_message_stream(request: StreamMessageRequest, http_request: Reque
                     "data": chunk,
                     "message_type": message_type,
                 }
-                yield f"data: {json.dumps(event_data)}\n\n"
+                yield f"data: {json.dumps(event_data, cls=DateTimeEncoder)}\n\n"
             
             # Done streaming
             elapsed = time.time() - start_time
