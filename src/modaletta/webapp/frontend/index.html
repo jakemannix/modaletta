@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Modaletta Chat</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-top">
+                <h1>Modaletta Chat</h1>
+                <div id="auth-section" class="auth-section">
+                    <!-- Populated by JavaScript based on auth status -->
+                    <span id="auth-loading">...</span>
+                </div>
+            </div>
+            <div class="agent-selector">
+                <select id="agent-select" aria-label="Select agent">
+                    <option value="">Loading agents...</option>
+                </select>
+                <input type="text" id="agent-id-input" placeholder="Or enter agent ID" aria-label="Agent ID">
+                <label class="debug-toggle-label" title="Show tool calls, reasoning, and other debug info">
+                    <input type="checkbox" id="debug-toggle" onchange="window.toggleDebugMode && window.toggleDebugMode()">
+                    <span>Debug</span>
+                </label>
+                <label class="debug-toggle-label" title="Stream responses in real-time">
+                    <input type="checkbox" id="streaming-toggle" onchange="window.toggleStreaming && window.toggleStreaming()">
+                    <span>Stream</span>
+                </label>
+            </div>
+        </header>
+
+        <main id="chat-container">
+            <div id="messages"></div>
+        </main>
+
+        <footer class="input-area">
+            <span id="user-label" class="user-label"></span>
+            <textarea id="message-input" placeholder="Type a message..." rows="1" aria-label="Message"></textarea>
+            <button id="voice-btn" class="voice-btn" aria-label="Voice input" title="Voice input">
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path fill="currentColor" d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1 1.93c-3.94-.49-7-3.85-7-7.93h2c0 2.76 2.24 5 5 5s5-2.24 5-5h2c0 4.08-3.06 7.44-7 7.93V19h4v2H8v-2h4v-3.07z"/>
+                </svg>
+            </button>
+            <button id="send-btn" class="send-btn" aria-label="Send message">Send</button>
+        </footer>
+
+        <div id="voice-feedback" class="voice-feedback hidden">
+            <div class="listening-indicator"></div>
+            <span>Listening...</span>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
