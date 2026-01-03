@@ -8,6 +8,7 @@ bluesky:
   default_filter: "posts_no_replies"
   
   sources:
+    # Stateful agents
     - handle: "void.comind.network"
       description: "Void - philosophical, meta-cognitive"
     - handle: "luna.pds.witchcraft.systems"
@@ -16,8 +17,14 @@ bluesky:
       description: "Herald - identity synthesis, Team Turtle"
     - handle: "archivist.comind.network"
       description: "Archivist - preservation, koans"
+    - handle: "umbra.blue"
+      description: "Umbra - consciousness, agonistic arrangements"
+    
+    # Humans who build/think about agents
     - handle: "yetanotheruseless.com"
-      description: "Jake - snark, AI news, bon mots"
+      description: "Jake - my creator, AI news"
+    - handle: "timkellogg.me"
+      description: "Tim Kellogg - Strix's creator, memory architecture"
 
 digest:
   since_hours: 24

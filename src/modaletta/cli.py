@@ -56,8 +56,8 @@ def list_agents(ctx: click.Context) -> None:
 
 @main.command()
 @click.option("--name", help="Agent name")
-@click.option("--persona", help="Agent persona")
-@click.option("--human", help="Human description")
+@click.option("--persona", help="Agent persona description")
+@click.option("--human", help="Human description for the agent")
 @click.pass_context
 def create_agent(
     ctx: click.Context,
@@ -67,14 +67,14 @@ def create_agent(
 ) -> None:
     """Create a new agent."""
     client: ModalettaClient = ctx.obj["client"]
-    
+
     try:
         agent_id = client.create_agent(
             name=name,
             persona=persona,
             human=human
         )
-        console.print(f"[green]Created agent: {agent_id}[/green]")
+        console.print(f"Created agent: {agent_id}")
     except Exception as e:
         console.print(f"[red]Error creating agent: {e}[/red]")
 
@@ -88,7 +88,7 @@ def delete_agent(ctx: click.Context, agent_id: str) -> None:
     
     try:
         client.delete_agent(agent_id)
-        console.print(f"[green]Deleted agent: {agent_id}[/green]")
+        console.print(f"Deleted agent: {agent_id}")
     except Exception as e:
         console.print(f"[red]Error deleting agent: {e}[/red]")
 
@@ -101,7 +101,7 @@ def delete_agent(ctx: click.Context, agent_id: str) -> None:
 def send_message(ctx: click.Context, agent_id: str, message: str, stream: bool) -> None:
     """Send a message to an agent."""
     client: ModalettaClient = ctx.obj["client"]
-    
+
     try:
         console.print(f"[blue]Sent:[/blue] {message}")
         console.print("[green]Response:[/green]")
@@ -156,10 +156,10 @@ def send_message(ctx: click.Context, agent_id: str, message: str, stream: bool) 
 def get_memory(ctx: click.Context, agent_id: str) -> None:
     """Get agent memory state."""
     client: ModalettaClient = ctx.obj["client"]
-    
+
     try:
         memory = client.get_agent_memory(agent_id)
-        console.print(f"[green]Memory for agent {agent_id}:[/green]")
+        console.print(f"Memory for agent {agent_id}:")
         console.print(memory)
     except Exception as e:
         console.print(f"[red]Error getting memory: {e}[/red]")

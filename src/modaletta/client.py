@@ -1,6 +1,6 @@
 """Modaletta client for interacting with Letta agents."""
 
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Literal, Optional
 from letta_client import Letta
 from .config import ModalettaConfig
 
@@ -62,7 +62,7 @@ class ModalettaClient:
             Agent ID.
         """
         agent_name = name or self.config.agent_name
-        
+
         # Build memory blocks if not provided
         if memory_blocks is None:
             memory_blocks = []
@@ -73,20 +73,20 @@ class ModalettaClient:
                 })
             if persona:
                 memory_blocks.append({
-                    "label": "persona", 
+                    "label": "persona",
                     "value": persona
                 })
-        
+
         # Use config defaults for model and embedding if not specified
         if "model" not in kwargs:
             kwargs["model"] = self.config.llm_model
         if "embedding" not in kwargs:
             kwargs["embedding"] = self.config.embedding_model
-        
+
         # Add tools from config if not specified
         if tools is None:
             tools = self.config.tools
-        
+
         agent = self.letta_client.agents.create(
             name=agent_name,
             memory_blocks=memory_blocks,
@@ -119,7 +119,7 @@ class ModalettaClient:
         self,
         agent_id: str,
         message: str,
-        role: str = "user",
+        role: Literal["user", "system", "assistant"] = "user",
         **kwargs: Any
     ) -> List[Dict[str, Any]]:
         """Send a message to an agent.
@@ -144,19 +144,19 @@ class ModalettaClient:
         self,
         agent_id: str,
         message: str,
-        role: str = "user",
+        role: Literal["user", "system", "assistant"] = "user",
         stream_tokens: bool = False,
         **kwargs: Any
     ) -> Iterator[Dict[str, Any]]:
         """Send a message to an agent with streaming response.
-        
+
         Args:
             agent_id: Agent ID.
             message: Message content.
             role: Message role (typically "user").
             stream_tokens: If True, stream individual tokens. If False, stream complete chunks.
             **kwargs: Additional arguments.
-            
+
         Yields:
             Message chunks with proper message_type field.
         """
@@ -198,7 +198,7 @@ class ModalettaClient:
             kwargs["before"] = before
         if after:
             kwargs["after"] = after
-        
+
         # Letta API returns a SyncArrayPage which auto-paginates when iterated
         # We only want the first page, so use .data to get just those items
         page = self.letta_client.agents.messages.list(**kwargs)
