@@ -36,6 +36,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+webapp = [
+    "pyjwt>=2.0.0",
+    "httpx>=0.24.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov",
@@ -44,6 +48,9 @@ dev = [
     "mypy",
     "black",
     "isort",
+    "pyjwt>=2.0.0",
+    "httpx>=0.24.0",
+    "fastapi>=0.100.0",
 ]
 
 [project.urls]

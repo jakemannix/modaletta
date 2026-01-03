@@ -73,3 +73,5 @@ Thumbs.db
 
 # Letta
 .letta/
+
+src/modaletta/webapp/authorized_users.yaml

@@ -1,37 +1,44 @@
 """Modaletta client for interacting with Letta agents."""
 
-from typing import Any, Dict, List, Optional, Iterator
+from typing import Any, Dict, Iterator, List, Optional
 from letta_client import Letta
 from .config import ModalettaConfig
 
 
 class ModalettaClient:
     """Client for managing Modaletta agents with Letta backend."""
-    
-    def __init__(self, config: Optional[ModalettaConfig] = None) -> None:
+
+    def __init__(
+        self,
+        config: Optional[ModalettaConfig] = None,
+        project_id: Optional[str] = None,
+    ) -> None:
         """Initialize the Modaletta client.
-        
+
         Args:
             config: Configuration object. If None, loads from environment.
+            project_id: Letta project ID. If None, uses default project.
         """
         self.config = config or ModalettaConfig.from_env()
+        self.project_id = project_id
         self._letta_client: Optional[Letta] = None
-    
+
     @property
     def letta_client(self) -> Letta:
         """Get or create Letta client."""
         if self._letta_client is None:
             self._letta_client = Letta(
                 base_url=self.config.letta_server_url,
-                api_key=self.config.letta_api_key
+                api_key=self.config.letta_api_key,
+                project_id=self.project_id,
             )
         return self._letta_client
-    
+
     def list_agents(self) -> List[Dict[str, Any]]:
         """List all agents."""
         agents = self.letta_client.agents.list()
         return [agent.model_dump() for agent in agents]
-    
+
     def create_agent(
         self,
         name: Optional[str] = None,
@@ -42,7 +49,7 @@ class ModalettaClient:
         **kwargs: Any
     ) -> str:
         """Create a new agent.
-        
+
         Args:
             name: Agent name. Uses config default if not provided.
             persona: Agent persona description.
@@ -50,7 +57,7 @@ class ModalettaClient:
             memory_blocks: Custom memory blocks. If None, creates default human/persona blocks.
             tools: List of tool names to add to agent.
             **kwargs: Additional arguments for agent creation.
-            
+
         Returns:
             Agent ID.
         """
@@ -87,27 +94,27 @@ class ModalettaClient:
             **kwargs
         )
         return agent.id
-    
+
     def get_agent(self, agent_id: str) -> Dict[str, Any]:
         """Get agent information.
-        
+
         Args:
             agent_id: Agent ID.
-            
+
         Returns:
             Agent information.
         """
-        agent = self.letta_client.agents.get(agent_id)
+        agent = self.letta_client.agents.retrieve(agent_id)
         return agent.model_dump()
-    
+
     def delete_agent(self, agent_id: str) -> None:
         """Delete an agent.
-        
+
         Args:
             agent_id: Agent ID.
         """
         self.letta_client.agents.delete(agent_id)
-    
+
     def send_message(
         self,
         agent_id: str,
@@ -116,13 +123,13 @@ class ModalettaClient:
         **kwargs: Any
     ) -> List[Dict[str, Any]]:
         """Send a message to an agent.
-        
+
         Args:
             agent_id: Agent ID.
             message: Message content.
             role: Message role (typically "user").
             **kwargs: Additional arguments.
-            
+
         Returns:
             Agent response messages with proper message_type field.
         """
@@ -132,7 +139,7 @@ class ModalettaClient:
             **kwargs
         )
         return [msg.model_dump() for msg in response.messages]
-    
+
     def send_message_stream(
         self,
         agent_id: str,
@@ -153,7 +160,7 @@ class ModalettaClient:
         Yields:
             Message chunks with proper message_type field.
         """
-        stream = self.letta_client.agents.messages.create_stream(
+        stream = self.letta_client.agents.messages.stream(
             agent_id=agent_id,
             messages=[{"role": role, "content": message}],
             stream_tokens=stream_tokens,
@@ -161,28 +168,77 @@ class ModalettaClient:
         )
         for chunk in stream:
             yield chunk.model_dump()
-    
-    def get_agent_memory(self, agent_id: str) -> Dict[str, Any]:
-        """Get agent memory state.
-        
+
+    def get_messages(
+        self,
+        agent_id: str,
+        limit: int = 10,
+        before: Optional[str] = None,
+        after: Optional[str] = None,
+        order: str = "desc",
+    ) -> List[Dict[str, Any]]:
+        """Get message history for an agent.
+
         Args:
             agent_id: Agent ID.
-            
+            limit: Maximum number of messages to return.
+            before: Message ID cursor - return messages before this ID.
+            after: Message ID cursor - return messages after this ID.
+            order: Sort order - "desc" for newest first, "asc" for oldest first.
+
+        Returns:
+            List of messages with message_type, content, date, etc.
+        """
+        kwargs: Dict[str, Any] = {
+            "agent_id": agent_id,
+            "limit": limit,
+            "order": order,
+        }
+        if before:
+            kwargs["before"] = before
+        if after:
+            kwargs["after"] = after
+        
+        # Letta API returns a SyncArrayPage which auto-paginates when iterated
+        # We only want the first page, so use .data to get just those items
+        page = self.letta_client.agents.messages.list(**kwargs)
+        # Access .data for just the first page's items (not all pages)
+        messages = getattr(page, 'data', None)
+        if messages is None:
+            # Fallback: if no .data attribute, take only 'limit' items
+            messages = []
+            for i, msg in enumerate(page):
+                if i >= limit:
+                    break
+                messages.append(msg)
+        return [msg.model_dump() for msg in messages]
+
+    def get_agent_memory(self, agent_id: str) -> Dict[str, Any]:
+        """Get agent memory state.
+
+        Args:
+            agent_id: Agent ID.
+
         Returns:
             Agent memory blocks as a dict of {label: value}.
         """
         blocks = self.letta_client.agents.blocks.list(agent_id)
         return {block.label: block.value for block in blocks}
-    
+
     def update_agent_memory(
         self,
         agent_id: str,
-        memory_updates: Dict[str, Any]
+        memory_updates: Dict[str, Any],
     ) -> None:
         """Update agent memory.
-        
+
         Args:
             agent_id: Agent ID.
-            memory_updates: Memory updates to apply.
+            memory_updates: Memory updates to apply (dict of {block_label: value}).
         """
-        self.letta_client.agents.memory.update(agent_id, **memory_updates)
+        for block_label, value in memory_updates.items():
+            self.letta_client.agents.blocks.update(
+                agent_id=agent_id,
+                block_label=block_label,
+                value=value,
+            )

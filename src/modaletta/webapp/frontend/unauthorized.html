@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Denied - Modaletta Chat</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .error-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 48px;
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .icon {
+            font-size: 4rem;
+            margin-bottom: 16px;
+        }
+        
+        h1 {
+            color: #e53935;
+            font-size: 1.75rem;
+            margin-bottom: 16px;
+        }
+        
+        .message {
+            color: #666;
+            font-size: 1rem;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+        
+        .email-box {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .email-box p {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+        }
+        
+        .user-email {
+            color: #333;
+            font-weight: 600;
+            font-size: 1.1rem;
+            word-break: break-all;
+        }
+        
+        .divider {
+            border-top: 1px solid #e0e0e0;
+            margin: 24px 0;
+        }
+        
+        .help-text {
+            color: #666;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+        
+        .contact-link {
+            color: #4285f4;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .contact-link:hover {
+            text-decoration: underline;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: #4285f4;
+            color: white;
+            border: none;
+        }
+        
+        .btn-primary:hover {
+            background: #3367d6;
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: #666;
+            border: 1px solid #ddd;
+        }
+        
+        .btn-secondary:hover {
+            background: #f5f5f5;
+            border-color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-card">
+        <div class="icon">🔒</div>
+        <h1>Access Denied</h1>
+        
+        <p class="message">
+            You've successfully signed in, but your account is not authorized to access this application.
+        </p>
+        
+        <div class="email-box">
+            <p>Signed in as:</p>
+            <div class="user-email" id="user-email">Loading...</div>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <p class="help-text">
+            If you believe this is an error, please contact the administrator:<br>
+            <a href="mailto:jake.mannix@gmail.com?subject=Modaletta%20Access%20Request" class="contact-link">
+                jake.mannix@gmail.com
+            </a>
+        </p>
+        
+        <div class="actions">
+            <a href="/auth/logout" class="btn btn-secondary">Sign Out</a>
+            <a href="mailto:jake.mannix@gmail.com?subject=Modaletta%20Access%20Request" class="btn btn-primary">
+                Request Access
+            </a>
+        </div>
+    </div>
+    
+    <script>
+        // Try to get user email from URL param or auth status
+        const urlParams = new URLSearchParams(window.location.search);
+        const email = urlParams.get('email');
+        if (email) {
+            document.getElementById('user-email').textContent = email;
+        } else {
+            // Fetch from auth status
+            fetch('/auth/status')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.user && data.user.email) {
+                        document.getElementById('user-email').textContent = data.user.email;
+                    } else {
+                        document.getElementById('user-email').textContent = 'Unknown';
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('user-email').textContent = 'Unknown';
+                });
+        }
+    </script>
+</body>
+</html>
